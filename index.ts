@@ -8,8 +8,8 @@
  * Features:
  * - Full todo list in LLM content after every tool call
  * - Full todo list rendered in history with themed status icons
- * - In-progress items shown above the composer via widget
- * - Custom footer with cwd on left, progress aligned right
+ * - Progress published via setStatus() for powerline extension to display
+ * - Active items published via setStatus() for powerline extension to display
  * - Auto-continue via sendUserMessage when incomplete todos remain at agent_end
  * - Hidden context injection via before_agent_start listing remaining todos
  * - State persisted in tool result details for proper branching support
@@ -17,7 +17,7 @@
 
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 // ── Types ──
@@ -116,62 +116,24 @@ function formatTodoListText(todos: TodoItem[]): string {
 
 function updateUI(ctx: ExtensionContext, todos: TodoItem[]): void {
 	if (!ctx.hasUI) return;
-
-	// Widget: show in-progress items above composer
-	const lines: string[] = [];
-	for (let i = 0; i < todos.length; i++) {
-		if (todos[i].status !== "in_progress") continue;
-		lines.push(
-			ctx.ui.theme.fg("warning", "● ") +
-				ctx.ui.theme.fg("accent", `[${i}] `) +
-				ctx.ui.theme.fg("text", todos[i].text),
-		);
-	}
-	ctx.ui.setWidget("till-done", lines.length > 0 ? lines : undefined);
-
-	// Custom footer: cwd left, progress right — restore default when no todos
 	if (todos.length > 0) {
 		let completed = 0;
 		for (let i = 0; i < todos.length; i++) {
 			if (todos[i].status === "completed") completed++;
 		}
 		const total = todos.length;
-		const cwd = ctx.cwd;
-
-		ctx.ui.setFooter((tui, theme, footerData) => {
-			let cachedWidth: number | undefined;
-			let cachedLine: string | undefined;
-
-			return {
-				dispose: footerData.onBranchChange(() => tui.requestRender()),
-				invalidate() {
-					cachedWidth = undefined;
-					cachedLine = undefined;
-				},
-				render(width: number): string[] {
-					if (cachedWidth === width && cachedLine !== undefined) return [cachedLine];
-
-					const branch = footerData.getGitBranch();
-					const left = theme.fg("dim", branch ? `${cwd} (${branch})` : cwd);
-					const right = theme.fg("accent", `📋 ${completed}/${total}`);
-
-					const gap = width - visibleWidth(left) - visibleWidth(right);
-					if (gap < 2) {
-						cachedLine = truncateToWidth(left + " " + right, width, "");
-					} else {
-						cachedLine = left + " ".repeat(gap) + right;
-					}
-					cachedWidth = width;
-					return [cachedLine];
-				},
-			};
-		});
+		ctx.ui.setStatus("till-done", `📋 ${completed}/${total}`);
+		const activeLines: string[] = [];
+		for (let i = 0; i < todos.length; i++) {
+			if (todos[i].status !== "in_progress") continue;
+			activeLines.push(`[${i}] ${todos[i].text}`);
+		}
+		ctx.ui.setStatus("till-done-active", activeLines.length > 0 ? activeLines.join("\n") : undefined);
 	} else {
-		ctx.ui.setFooter(undefined);
+		ctx.ui.setStatus("till-done", undefined);
+		ctx.ui.setStatus("till-done-active", undefined);
 	}
 }
-
-/** Validate reconstructed state from session storage */
 function isValidTodoItem(t: unknown): t is TodoItem {
 	return (
 		typeof t === "object" &&

@@ -1,16 +1,16 @@
-# Implementation Plan: `pi-till-done` Extension
+# Implementation Plan: `pi-til-done` Extension
 
 ## 1. SCOPE & BOUNDARIES
 
 ### Single File
 
 ```
-/home/blake/Documents/software/pi-extensions/pi-till-done/index.ts
+/home/blake/Documents/software/pi-extensions/pi-til-done/index.ts
 ```
 
 Deployment copy (symlink or copy):
 ```
-~/.pi/agent/extensions/pi-till-done/index.ts
+~/.pi/agent/extensions/pi-til-done/index.ts
 ```
 
 ### OUT OF SCOPE
@@ -199,17 +199,17 @@ function updateUI(ctx: ExtensionContext): void {
              ctx.ui.theme.fg("accent", `[${idx}] `) +
              ctx.ui.theme.fg("text", item.text);
     });
-    ctx.ui.setWidget("till-done", lines);
+    ctx.ui.setWidget("til-done", lines);
   } else {
-    ctx.ui.setWidget("till-done", undefined);
+    ctx.ui.setWidget("til-done", undefined);
   }
   
   // Status footer
   if (todos.length > 0) {
     const completed = todos.filter(t => t.status === "completed").length;
-    ctx.ui.setStatus("till-done", ctx.ui.theme.fg("accent", `📋 ${completed}/${todos.length}`));
+    ctx.ui.setStatus("til-done", ctx.ui.theme.fg("accent", `📋 ${completed}/${todos.length}`));
   } else {
-    ctx.ui.setStatus("till-done", undefined);
+    ctx.ui.setStatus("til-done", undefined);
   }
 }
 ```
@@ -239,7 +239,7 @@ pi.on("before_agent_start", async () => {
   
   return {
     message: {
-      customType: "till-done-context",
+      customType: "til-done-context",
       content: `[TILL-DONE ACTIVE]\n\nCurrent todo list:\n${todoList}\n\n${remaining.length} item(s) remaining. Continue working through the list. Call start_todo on the next item before working on it, then complete_todo when done.`,
       display: false,
     },
@@ -261,7 +261,7 @@ pi.on("agent_end", async (_event, ctx) => {
   if (incomplete.length === 0) {
     // All done — send completion message and clear state
     pi.sendMessage({
-      customType: "till-done-complete",
+      customType: "til-done-complete",
       content: `**All todos complete!** ✓ (${todos.length} items)`,
       display: true,
     }, { triggerTurn: false });
@@ -302,16 +302,16 @@ pi.on("agent_end", async (_event, ctx) => {
 
 Register two message renderers:
 
-1. **`"till-done-context"`** — renders the injected context message (though `display: false` means it won't typically be shown; register as a safety measure):
+1. **`"til-done-context"`** — renders the injected context message (though `display: false` means it won't typically be shown; register as a safety measure):
 ```typescript
-pi.registerMessageRenderer("till-done-context", (message, _options, theme) => {
+pi.registerMessageRenderer("til-done-context", (message, _options, theme) => {
   return new Text(theme.fg("accent", "📋 ") + theme.fg("dim", message.content), 0, 0);
 });
 ```
 
-2. **`"till-done-complete"`** — renders the completion message:
+2. **`"til-done-complete"`** — renders the completion message:
 ```typescript
-pi.registerMessageRenderer("till-done-complete", (message, _options, theme) => {
+pi.registerMessageRenderer("til-done-complete", (message, _options, theme) => {
   return new Text(theme.fg("success", "✓ ") + theme.fg("text", message.content), 0, 0);
 });
 ```
@@ -505,15 +505,15 @@ pi.registerTool({
 
 | customType | Purpose |
 |------------|---------|
-| `"till-done-context"` | Render injected context (hidden, but registered for safety) |
-| `"till-done-complete"` | Render "All todos complete!" message |
+| `"til-done-context"` | Render injected context (hidden, but registered for safety) |
+| `"til-done-complete"` | Render "All todos complete!" message |
 
 ### 4.6 Widget & Status Keys
 
 | Key | Purpose |
 |-----|---------|
-| `"till-done"` | Widget showing in-progress items above composer |
-| `"till-done"` | Footer status showing `📋 X/Y` progress |
+| `"til-done"` | Widget showing in-progress items above composer |
+| `"til-done"` | Footer status showing `📋 X/Y` progress |
 
 Both use the same key namespace since they're different API calls (setWidget vs setStatus).
 
@@ -598,7 +598,7 @@ No existing tests to maintain — this is a new extension with no test suite.
 
 ## 6. FILE STRUCTURE — CODE ORGANIZATION
 
-The single file `/home/blake/Documents/software/pi-extensions/pi-till-done/index.ts` will be organized in this order:
+The single file `/home/blake/Documents/software/pi-extensions/pi-til-done/index.ts` will be organized in this order:
 
 ```
 1. Imports
@@ -613,7 +613,7 @@ The single file `/home/blake/Documents/software/pi-extensions/pi-till-done/index
 10. Helper: renderResultAll(result, options, theme, context) → Component (shared by all 5 tools)
 11. export default function(pi) — main extension body:
     a. let todos: TodoItem[] = []
-    b. Register message renderers (till-done-context, till-done-complete)
+    b. Register message renderers (til-done-context, til-done-complete)
     c. Register event handlers:
        - session_start → reconstructState
        - session_tree → reconstructState
@@ -691,16 +691,16 @@ function updateUI(ctx: ExtensionContext, todos: TodoItem[]): void {
              ctx.ui.theme.fg("accent", `[${idx}] `) +
              ctx.ui.theme.fg("text", item.text);
     });
-    ctx.ui.setWidget("till-done", lines);
+    ctx.ui.setWidget("til-done", lines);
   } else {
-    ctx.ui.setWidget("till-done", undefined);
+    ctx.ui.setWidget("til-done", undefined);
   }
 
   if (todos.length > 0) {
     const completed = todos.filter(t => t.status === "completed").length;
-    ctx.ui.setStatus("till-done", ctx.ui.theme.fg("accent", `📋 ${completed}/${todos.length}`));
+    ctx.ui.setStatus("til-done", ctx.ui.theme.fg("accent", `📋 ${completed}/${todos.length}`));
   } else {
-    ctx.ui.setStatus("till-done", undefined);
+    ctx.ui.setStatus("til-done", undefined);
   }
 }
 
@@ -766,11 +766,11 @@ export default function (pi: ExtensionAPI): void {
   let todos: TodoItem[] = [];
 
   // Message renderers
-  pi.registerMessageRenderer("till-done-context", (message, _opts, theme) => {
+  pi.registerMessageRenderer("til-done-context", (message, _opts, theme) => {
     return new Text(theme.fg("accent", "📋 ") + theme.fg("dim", message.content as string), 0, 0);
   });
 
-  pi.registerMessageRenderer("till-done-complete", (message, _opts, theme) => {
+  pi.registerMessageRenderer("til-done-complete", (message, _opts, theme) => {
     return new Text(theme.fg("success", "✓ ") + theme.fg("text", message.content as string), 0, 0);
   });
 
@@ -797,7 +797,7 @@ export default function (pi: ExtensionAPI): void {
 
     return {
       message: {
-        customType: "till-done-context",
+        customType: "til-done-context",
         content: `[TILL-DONE ACTIVE]\n\nCurrent todo list:\n${todoList}\n\n${remaining.length} item(s) remaining. Continue working through the list. Call start_todo on the next item before working on it, then complete_todo when done.`,
         display: false,
       },
@@ -812,7 +812,7 @@ export default function (pi: ExtensionAPI): void {
 
     if (incomplete.length === 0) {
       pi.sendMessage({
-        customType: "till-done-complete",
+        customType: "til-done-complete",
         content: `**All todos complete!** ✓ (${todos.length} items)`,
         display: true,
       }, { triggerTurn: false });
@@ -982,8 +982,8 @@ export default function (pi: ExtensionAPI): void {
 After writing `index.ts`:
 
 ```bash
-mkdir -p ~/.pi/agent/extensions/pi-till-done
-ln -sf /home/blake/Documents/software/pi-extensions/pi-till-done/index.ts ~/.pi/agent/extensions/pi-till-done/index.ts
+mkdir -p ~/.pi/agent/extensions/pi-til-done
+ln -sf /home/blake/Documents/software/pi-extensions/pi-til-done/index.ts ~/.pi/agent/extensions/pi-til-done/index.ts
 ```
 
 Or copy the file if symlinks are not preferred. The extension auto-loads on next pi session start or via `/reload`.

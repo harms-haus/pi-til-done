@@ -122,16 +122,16 @@ function updateUI(ctx: ExtensionContext, todos: TodoItem[]): void {
 			if (todos[i].status === "completed") completed++;
 		}
 		const total = todos.length;
-		ctx.ui.setStatus("till-done", `📋 ${completed}/${total}`);
+		ctx.ui.setStatus("til-done", `📋 ${completed}/${total}`);
 		const activeLines: string[] = [];
 		for (let i = 0; i < todos.length; i++) {
 			if (todos[i].status !== "in_progress") continue;
 			activeLines.push(`[${i}] ${todos[i].text}`);
 		}
-		ctx.ui.setStatus("till-done-active", activeLines.length > 0 ? activeLines.join("\n") : undefined);
+		ctx.ui.setStatus("til-done-active", activeLines.length > 0 ? activeLines.join("\n") : undefined);
 	} else {
-		ctx.ui.setStatus("till-done", undefined);
-		ctx.ui.setStatus("till-done-active", undefined);
+		ctx.ui.setStatus("til-done", undefined);
+		ctx.ui.setStatus("til-done-active", undefined);
 	}
 }
 function isValidTodoItem(t: unknown): t is TodoItem {
@@ -190,11 +190,11 @@ export default function (pi: ExtensionAPI): void {
 
 	// ── Message Renderers ──
 
-	pi.registerMessageRenderer("till-done-context", (message, _opts, theme) => {
+	pi.registerMessageRenderer("til-done-context", (message, _opts, theme) => {
 		return new Text(theme.fg("accent", "📋 ") + theme.fg("dim", message.content as string), 0, 0);
 	});
 
-	pi.registerMessageRenderer("till-done-complete", (message, _opts, theme) => {
+	pi.registerMessageRenderer("til-done-complete", (message, _opts, theme) => {
 		return new Text(theme.fg("success", "✓ ") + theme.fg("text", message.content as string), 0, 0);
 	});
 
@@ -223,7 +223,7 @@ export default function (pi: ExtensionAPI): void {
 
 		return {
 			message: {
-				customType: "till-done-context",
+				customType: "til-done-context",
 				content: `[TILL-DONE ACTIVE]\n\nCurrent todo list:\n${todoList}\n\n${remaining} item(s) remaining. Continue working through the list. Call edit_todos with action 'start' on the next item before working on it, then 'complete' when done.`,
 				display: false,
 			},
@@ -254,7 +254,7 @@ export default function (pi: ExtensionAPI): void {
 			const total = todos.length;
 			pi.sendMessage(
 				{
-					customType: "till-done-complete",
+					customType: "til-done-complete",
 					content: `**All todos complete!** ✓ (${total} items)`,
 					display: true,
 				},

@@ -1,5 +1,5 @@
 {
-  "name": "pi-till-done",
+  "name": "pi-til-done",
   "version": "1.0.0",
   "description": "pi-coding-agent extension: todo list that iterates until all tasks are done",
   "keywords": ["pi-package"],
@@ -15,7 +15,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/harms-haus/pi-till-done.git"
+    "url": "git+https://github.com/harms-haus/pi-til-done.git"
   },
   "license": "MIT"
 }

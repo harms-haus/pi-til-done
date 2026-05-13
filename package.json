@@ -3,15 +3,32 @@
   "version": "1.0.0",
   "description": "pi-coding-agent extension: todo list that iterates until all tasks are done",
   "keywords": ["pi-package"],
-  "main": "index.ts",
+  "type": "module",
+  "main": "src/index.ts",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": ["./src/index.ts"]
+  },
+  "scripts": {
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write src/",
+    "format:check": "prettier --check src/",
+    "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
     "typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "@eslint/js": "^9.0.0",
+    "typescript-eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "vitest": "^3.0.0"
   },
   "repository": {
     "type": "git",

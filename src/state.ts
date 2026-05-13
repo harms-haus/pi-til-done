@@ -1,0 +1,110 @@
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { TodoItem, TodoStatus } from "./types";
+import { TOOL_NAMES } from "./types";
+import { isValidTodoItem } from "./validation";
+
+// ── Mutable State ──
+
+let todos: TodoItem[] = [];
+let autoContinueCount = 0;
+
+// ── State Accessors ──
+
+/** Returns a readonly reference to the current todos */
+export function getTodos(): readonly TodoItem[] {
+  return todos;
+}
+
+/** Replaces the entire todo list. Resets auto-continue counter. */
+export function setTodos(newTodos: TodoItem[]): void {
+  todos = newTodos;
+  autoContinueCount = 0;
+}
+
+/** Updates the status of specific todo items by index. Resets auto-continue counter. */
+export function updateTodoStatus(indices: readonly number[], newStatus: TodoStatus): void {
+  for (const idx of indices) {
+    todos[idx] = { ...todos[idx], status: newStatus };
+  }
+  autoContinueCount = 0;
+}
+
+/** Increments and returns the auto-continue counter */
+export function incrementAutoContinue(): number {
+  return ++autoContinueCount;
+}
+
+/** Resets the auto-continue counter (called when todos are set or edited) */
+export function resetAutoContinue(): void {
+  autoContinueCount = 0;
+}
+
+/** Resets all mutable state. For testing only. */
+export function resetState(): void {
+  todos = [];
+  autoContinueCount = 0;
+}
+
+// ── State Reconstruction ──
+
+/**
+ * Reconstructs todo state from session history.
+ * Scans the branch in reverse to find the last tool result from this extension.
+ * Filters entries through isValidTodoItem for safety.
+ */
+export function reconstructState(ctx: ExtensionContext): TodoItem[] {
+  const branch = ctx.sessionManager.getBranch();
+
+  for (let i = branch.length - 1; i >= 0; i--) {
+    const entry = branch[i];
+    if (entry.type !== "message") continue;
+    const msg = entry.message;
+    if (msg.role !== "toolResult") continue;
+    if (!TOOL_NAMES.has(msg.toolName)) continue;
+
+    const details = msg.details as { todos?: unknown[] } | undefined;
+    if (details?.todos && Array.isArray(details.todos) && details.todos.length > 0) {
+      const valid = details.todos.filter(isValidTodoItem);
+      return valid.map((t) => ({ text: t.text, status: t.status }));
+    }
+  }
+
+  return [];
+}
+
+// ── UI Sync ──
+
+/** Updates the status bar and active-items display to reflect current state */
+export function updateUI(ctx: ExtensionContext, todoList: readonly TodoItem[]): void {
+  if (!ctx.hasUI) return;
+
+  if (todoList.length === 0) {
+    ctx.ui.setStatus("til-done", undefined);
+    ctx.ui.setStatus("til-done-active", undefined);
+    return;
+  }
+
+  const total = todoList.length;
+  let completed = 0;
+  const activeLines: string[] = [];
+
+  for (let i = 0; i < total; i++) {
+    const item = todoList[i];
+    if (item.status === "completed") {
+      completed++;
+    }
+    if (item.status === "in_progress") {
+      activeLines.push(`[${i}] ${item.text}`);
+    }
+  }
+
+  // All completed — show done state
+  if (completed === total) {
+    ctx.ui.setStatus("til-done", `✓ Done (${total} items)`);
+    ctx.ui.setStatus("til-done-active", undefined);
+    return;
+  }
+
+  ctx.ui.setStatus("til-done", `📋 ${completed}/${total}`);
+  ctx.ui.setStatus("til-done-active", activeLines.length > 0 ? activeLines.join("\n") : undefined);
+}

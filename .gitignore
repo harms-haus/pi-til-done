@@ -5,3 +5,4 @@ coverage/
 *.d.ts
 !.prettierrc
 !.eslintrc.*
+.bifrost.yaml

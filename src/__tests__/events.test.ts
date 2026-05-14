@@ -248,8 +248,8 @@ describe("agent_end handler", () => {
     resetState();
   });
 
-  it("sends sendMessage when incomplete todos remain", async () => {
-    const { api, on, sendMessage } = createMockAPI();
+  it("sends sendUserMessage when incomplete todos remain", async () => {
+    const { api, on, sendUserMessage } = createMockAPI();
     setTodos([
       { text: "task 1", status: "completed" },
       { text: "task 2", status: "not_started" },
@@ -260,18 +260,15 @@ describe("agent_end handler", () => {
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
-    expect(sendMessage).toHaveBeenCalled();
-    const message = sendMessage.mock.calls[0][0];
-    expect(message.content).toContain("edit_todos");
-    expect(message.content).toContain("action 'start'");
-    expect(message.content).toContain("[1]");
-    expect(message.customType).toBe("til-done-continue");
-    expect(message.display).toBe(false);
-    expect(sendMessage.mock.calls[0][1]).toEqual({ triggerTurn: true, deliverAs: "nextTurn" });
+    expect(sendUserMessage).toHaveBeenCalled();
+    const prompt = sendUserMessage.mock.calls[0][0];
+    expect(prompt).toContain("edit_todos");
+    expect(prompt).toContain("action 'start'");
+    expect(prompt).toContain("[1]");
   });
 
-  it("sendMessage content does not contain todo.text in instruction portion (SEC-CRIT-01)", async () => {
-    const { api, on, sendMessage } = createMockAPI();
+  it("sendUserMessage content does not contain todo.text in instruction portion (SEC-CRIT-01)", async () => {
+    const { api, on, sendUserMessage } = createMockAPI();
     setTodos([
       { text: "task 1", status: "completed" },
       { text: "task 2", status: "in_progress" },
@@ -282,7 +279,7 @@ describe("agent_end handler", () => {
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
-    const prompt = sendMessage.mock.calls[0][0].content as string;
+    const prompt = sendUserMessage.mock.calls[0][0];
     const lines = prompt.split("\n");
 
     // Find the instruction line
@@ -304,7 +301,7 @@ describe("agent_end handler", () => {
     const agentEndHandler = mockApi.on.mock.calls.find((call) => call[0] === "agent_end")![1];
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
-    expect(mockApi.sendMessage).not.toHaveBeenCalled();
+    expect(mockApi.sendUserMessage).not.toHaveBeenCalled();
   });
 
   it("returns early when all todos are completed", async () => {
@@ -319,7 +316,7 @@ describe("agent_end handler", () => {
     const agentEndHandler = mockApi.on.mock.calls.find((call) => call[0] === "agent_end")![1];
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
-    expect(mockApi.sendMessage).not.toHaveBeenCalled();
+    expect(mockApi.sendUserMessage).not.toHaveBeenCalled();
   });
 
   it("returns early when all todos are abandoned", async () => {
@@ -334,7 +331,7 @@ describe("agent_end handler", () => {
     const agentEndHandler = mockApi.on.mock.calls.find((call) => call[0] === "agent_end")![1];
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
-    expect(mockApi.sendMessage).not.toHaveBeenCalled();
+    expect(mockApi.sendUserMessage).not.toHaveBeenCalled();
   });
 
   it("sends completion message via sendMessage when auto-continue limit reached", async () => {
@@ -353,14 +350,13 @@ describe("agent_end handler", () => {
       await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
     }
 
-    // Last sendMessage call should be the limit-reached message
-    const lastCall = mockApi.sendMessage.mock.calls[mockApi.sendMessage.mock.calls.length - 1];
-    const message = lastCall[0];
+    expect(mockApi.sendMessage).toHaveBeenCalled();
+    const message = mockApi.sendMessage.mock.calls[0][0];
     expect(message.customType).toBe("til-done-complete");
     expect(message.content).toContain("Auto-continue limit reached");
   });
 
-  it("does not send sendMessage when limit reached", async () => {
+  it("does not send sendUserMessage when limit reached", async () => {
     const mockApi = createMockAPI();
     setTodos([{ text: "task 1", status: "not_started" }]);
 
@@ -373,12 +369,12 @@ describe("agent_end handler", () => {
       await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
     }
 
-    // MAX_AUTO_CONTINUE continue messages + 1 limit message = MAX_AUTO_CONTINUE + 1 total
-    expect(mockApi.sendMessage).toHaveBeenCalledTimes(MAX_AUTO_CONTINUE + 1);
+    // sendUserMessage should only have been called MAX_AUTO_CONTINUE times (not on the limit-hit call)
+    expect(mockApi.sendUserMessage).toHaveBeenCalledTimes(MAX_AUTO_CONTINUE);
   });
 
   it("increments auto-continue counter on each call", async () => {
-    const { api, on, sendMessage } = createMockAPI();
+    const { api, on, sendUserMessage } = createMockAPI();
     setTodos([{ text: "task 1", status: "not_started" }]);
 
     registerEventHandlers(api);
@@ -387,15 +383,15 @@ describe("agent_end handler", () => {
 
     // First call should work
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
-    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendUserMessage).toHaveBeenCalledTimes(1);
 
     // Second call should also work
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
-    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendUserMessage).toHaveBeenCalledTimes(2);
 
     // Third call should also work
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
-    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendUserMessage).toHaveBeenCalledTimes(3);
   });
 
   it("resets counter is NOT called by agent_end itself (only by tool actions)", async () => {
@@ -412,12 +408,12 @@ describe("agent_end handler", () => {
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
     // The counter should have incremented each time
-    // This is tested implicitly by the fact that sendMessage gets called 3 times
+    // This is tested implicitly by the fact that sendUserMessage gets called 3 times
     // (if counter was reset, it would still call, but we want to ensure it doesn't reset)
   });
 
   it("prompt contains structured format with remaining list", async () => {
-    const { api, on, sendMessage } = createMockAPI();
+    const { api, on, sendUserMessage } = createMockAPI();
     setTodos([
       { text: "task 1", status: "completed" },
       { text: "task 2", status: "not_started" },
@@ -429,14 +425,14 @@ describe("agent_end handler", () => {
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
-    const prompt = sendMessage.mock.calls[0][0].content as string;
+    const prompt = sendUserMessage.mock.calls[0][0];
     expect(prompt).toContain("Remaining items:");
     expect(prompt).toContain("– [1] task 2");
     expect(prompt).toContain("● [2] task 3");
   });
 
   it("prompt contains next action instruction with index and action name only", async () => {
-    const { api, on, sendMessage } = createMockAPI();
+    const { api, on, sendUserMessage } = createMockAPI();
     setTodos([
       { text: "task 1", status: "completed" },
       { text: "task 2", status: "in_progress" },
@@ -447,12 +443,12 @@ describe("agent_end handler", () => {
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
-    const prompt = sendMessage.mock.calls[0][0].content as string;
+    const prompt = sendUserMessage.mock.calls[0][0];
     expect(prompt).toContain("Next action: edit_todos with action 'complete' and indices [1]");
   });
 
   it("does not auto-continue when agent was aborted (user interrupt)", async () => {
-    const { api, on, sendMessage } = createMockAPI();
+    const { api, on, sendUserMessage } = createMockAPI();
     setTodos([
       { text: "task 1", status: "completed" },
       { text: "task 2", status: "not_started" },
@@ -463,6 +459,6 @@ describe("agent_end handler", () => {
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "aborted" }] }, {});
 
-    expect(sendMessage).not.toHaveBeenCalled();
+    expect(sendUserMessage).not.toHaveBeenCalled();
   });
 });

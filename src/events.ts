@@ -15,10 +15,6 @@ export function registerMessageRenderers(pi: ExtensionAPI): void {
   pi.registerMessageRenderer("til-done-complete", (message, _opts, theme) => {
     return new Text(theme.fg("success", "✓ ") + theme.fg("text", message.content as string), 0, 0);
   });
-
-  pi.registerMessageRenderer("til-done-continue", (message, _opts, theme) => {
-    return new Text(theme.fg("accent", "📋 ") + theme.fg("dim", message.content as string), 0, 0);
-  });
 }
 
 // ── Event Handlers ──
@@ -131,9 +127,6 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
       `Next action: edit_todos with action '${nextAction}' and indices [${nextIdx}]`,
     ].join("\n");
 
-    pi.sendMessage(
-      { customType: "til-done-continue", content: prompt, display: false },
-      { triggerTurn: true, deliverAs: "nextTurn" },
-    );
+    pi.sendUserMessage(prompt);
   });
 }

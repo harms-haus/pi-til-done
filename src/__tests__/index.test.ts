@@ -29,10 +29,11 @@ describe("default export (extension factory)", () => {
 
     extensionFactory(api);
 
-    expect(registerMessageRenderer).toHaveBeenCalledTimes(2);
+    expect(registerMessageRenderer).toHaveBeenCalledTimes(3);
     const rendererTypes = registerMessageRenderer.mock.calls.map((call) => call[0]);
     expect(rendererTypes).toContain("til-done-context");
     expect(rendererTypes).toContain("til-done-complete");
+    expect(rendererTypes).toContain("til-done-continue");
   });
 
   it("registers 4+ event handlers (session_start, session_tree, before_agent_start, agent_end)", () => {

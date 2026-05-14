@@ -178,7 +178,7 @@ export function createEditTodosTool(): ToolDefinition<typeof EditTodosParams, To
     },
 
     renderCall(args, theme) {
-      const indices = args.indices.map((i: number) => `[${i}]`).join(", ");
+      const indices = `[${args.indices.join(", ")}]`;
       return new Text(
         theme.fg("toolTitle", theme.bold("edit_todos ")) +
           theme.fg("warning", `${args.action} `) +

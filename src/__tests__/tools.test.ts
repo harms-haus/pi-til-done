@@ -421,8 +421,7 @@ describe("renderCall", () => {
 
       expect(result.toString()).toContain("edit_todos");
       expect(result.toString()).toContain("start");
-      expect(result.toString()).toContain("[0]");
-      expect(result.toString()).toContain("[2]");
+      expect(result.toString()).toContain("[0, 2]");
     }
   });
 });

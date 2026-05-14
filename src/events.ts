@@ -15,6 +15,11 @@ export function registerMessageRenderers(pi: ExtensionAPI): void {
   pi.registerMessageRenderer("til-done-complete", (message, _opts, theme) => {
     return new Text(theme.fg("success", "✓ ") + theme.fg("text", message.content as string), 0, 0);
   });
+
+  // Countdown shown during the grace period before auto-continue
+  pi.registerMessageRenderer("til-done-countdown", (message, _opts, theme) => {
+    return new Text(theme.fg("accent", "⏳ ") + theme.fg("dim", message.content as string), 0, 0);
+  });
 }
 
 // ── Event Handlers ──
@@ -127,6 +132,23 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
       `Next action: edit_todos with action '${nextAction}' and indices [${nextIdx}]`,
     ].join("\n");
 
-    pi.sendUserMessage(prompt);
+    // Show countdown message immediately (no turn trigger)
+    pi.sendMessage(
+      {
+        customType: "til-done-countdown",
+        content: "Auto-continuing in 3s... (type anything to interrupt)",
+        display: true,
+      },
+      { triggerTurn: false },
+    );
+
+    // Delay to let agent loop fully wind down and give user a grace period
+    setTimeout(() => {
+      try {
+        pi.sendUserMessage(prompt);
+      } catch {
+        // User already started typing — skip auto-continue
+      }
+    }, 3000);
   });
 }

@@ -1,11 +1,17 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import type { TodoStatus, TodoDetails } from "./types";
-import { ACTION_TO_STATUS, ACTION_LABELS, INITIAL_STATUS, MAX_TODO_TEXT_LENGTH } from "./types";
+import type { TodoItem, TodoStatus, TodoDetails } from "./types";
+import {
+  ACTION_TO_STATUS,
+  ACTION_LABELS,
+  INITIAL_STATUS,
+  MAX_TODO_TEXT_LENGTH,
+  MAX_TODOS,
+} from "./types";
 import { cloneTodos, findOversizedItem } from "./validation";
 import { formatTodoListText, renderToolResult } from "./formatting";
-import { getTodos, setTodos, updateTodoStatus, updateUI } from "./state";
+import { getTodos, setTodos, appendTodos, updateTodoStatus, updateUI } from "./state";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 // ── Schemas ──
@@ -22,14 +28,24 @@ const WriteTodosParams = Type.Object({
 const ListTodosParams = Type.Object({});
 
 const EditTodosParams = Type.Object({
-  action: StringEnum(["start", "complete", "abandon"] as const, {
-    description: "Action to apply to the specified indices",
+  action: StringEnum(["start", "complete", "abandon", "add"] as const, {
+    description: "Action to apply to the todo items",
   }),
-  indices: Type.Array(Type.Integer(), {
-    description: "0-based indices to apply the action to",
-    minItems: 1,
-    maxItems: 50,
-  }),
+  indices: Type.Optional(
+    Type.Array(Type.Integer(), {
+      description: "0-based indices to apply the action to (required for start/complete/abandon)",
+      minItems: 1,
+      maxItems: 50,
+    }),
+  ),
+  todos: Type.Optional(
+    Type.Array(
+      Type.Object({
+        text: Type.String({ description: "Description of the task", maxLength: 1000 }),
+      }),
+      { description: "Todo items to add (required for 'add' action)", maxItems: 50 },
+    ),
+  ),
 });
 
 // ── Tool Factories ──
@@ -47,6 +63,7 @@ export function createWriteTodosTool(): ToolDefinition<typeof WriteTodosParams, 
       "Use edit_todos with action 'start' and an array of 0-based indices to begin work on specific items.",
       "Use edit_todos with action 'complete' and an array of 0-based indices to mark items as done.",
       "Use edit_todos with action 'abandon' and an array of 0-based indices when items are no longer needed.",
+      "Use edit_todos with action 'add' and a 'todos' array to append new items to the existing list.",
       "Use list_todos to review the current todo list.",
       "Always call edit_todos with action 'start' on the next item before working on it, then 'complete' when done.",
     ],
@@ -128,64 +145,167 @@ export function createEditTodosTool(): ToolDefinition<typeof EditTodosParams, To
     name: "edit_todos",
     label: "Edit Todos",
     description:
-      "Apply an action ('start', 'complete', or 'abandon') to one or more todo items by their 0-based indices. Batch operations are atomic — if any index is invalid, no changes are applied.",
+      "Apply an action ('start', 'complete', 'abandon', or 'add') to todo items. Use 'add' to append new items. For start/complete/abandon, provide 0-based indices. Batch operations are atomic — if any index is invalid, no changes are applied.",
     parameters: EditTodosParams,
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const currentTodos = getTodos();
+      if (params.action === "add") {
+        // Validate todos parameter
+        if (!params.todos || params.todos.length === 0) {
+          return {
+            content: [
+              { type: "text" as const, text: "Error: 'todos' is required for the 'add' action" },
+            ],
+            details: { action: "edit" as const, todos: [], error: "todos required for add" },
+          };
+        }
 
-      if (currentTodos.length === 0) {
-        return {
-          content: [{ type: "text" as const, text: "Error: no todos exist" }],
-          details: { action: "edit" as const, todos: [], error: "no todos exist" },
-        };
-      }
+        // Defense-in-depth: check text lengths
+        const oversizedIdx = findOversizedItem(params.todos, MAX_TODO_TEXT_LENGTH);
+        if (oversizedIdx !== -1) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: todo item at index ${oversizedIdx} exceeds maximum text length (${MAX_TODO_TEXT_LENGTH} characters)`,
+              },
+            ],
+            details: {
+              action: "edit" as const,
+              todos: [],
+              error: "text too long",
+            },
+          };
+        }
 
-      // Validate all indices atomically
-      const invalid = params.indices.filter((i) => i < 0 || i >= currentTodos.length);
-      if (invalid.length > 0) {
+        // Check total count
+        const currentTodos = getTodos();
+        if (currentTodos.length + params.todos.length > MAX_TODOS) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: adding ${params.todos.length} item(s) would exceed maximum of ${MAX_TODOS} todos (currently ${currentTodos.length})`,
+              },
+            ],
+            details: {
+              action: "edit" as const,
+              todos: [],
+              error: "max todos exceeded",
+            },
+          };
+        }
+
+        // Map to TodoItem[] with INITIAL_STATUS
+        const newItems: TodoItem[] = params.todos.map((t) => ({
+          text: t.text,
+          status: INITIAL_STATUS as TodoStatus,
+        }));
+
+        appendTodos(newItems);
+        updateUI(ctx, getTodos());
+
         return {
           content: [
             {
               type: "text" as const,
-              text: `Error: indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
+              text: `Added ${params.todos.length} item(s):\n\n${formatTodoListText(getTodos())}`,
             },
           ],
-          details: {
-            action: "edit" as const,
-            todos: [],
-            error: `indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
-          },
+          details: { action: "edit" as const, todos: cloneTodos(getTodos()) },
+        };
+      } else {
+        // Validate indices parameter
+        if (!params.indices || params.indices.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Error: 'indices' is required for start/complete/abandon actions",
+              },
+            ],
+            details: { action: "edit" as const, todos: [], error: "indices required" },
+          };
+        }
+
+        const currentTodos = getTodos();
+
+        if (currentTodos.length === 0) {
+          return {
+            content: [{ type: "text" as const, text: "Error: no todos exist" }],
+            details: { action: "edit" as const, todos: [], error: "no todos exist" },
+          };
+        }
+
+        // Validate all indices atomically
+        const invalid = params.indices.filter((i) => i < 0 || i >= currentTodos.length);
+        if (invalid.length > 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
+              },
+            ],
+            details: {
+              action: "edit" as const,
+              todos: [],
+              error: `indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
+            },
+          };
+        }
+
+        // Apply action
+        const newStatus = ACTION_TO_STATUS[params.action];
+        updateTodoStatus(params.indices, newStatus);
+        updateUI(ctx, getTodos());
+
+        const actionLabel = ACTION_LABELS[params.action];
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `${actionLabel} [${params.indices.join(", ")}]\n\n${formatTodoListText(getTodos())}`,
+            },
+          ],
+          details: { action: "edit" as const, todos: cloneTodos(getTodos()) },
         };
       }
-
-      // Apply action
-      const newStatus = ACTION_TO_STATUS[params.action];
-      updateTodoStatus(params.indices, newStatus);
-      updateUI(ctx, getTodos());
-
-      const actionLabel = ACTION_LABELS[params.action];
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `${actionLabel} [${params.indices.join(", ")}]\n\n${formatTodoListText(getTodos())}`,
-          },
-        ],
-        details: { action: "edit" as const, todos: cloneTodos(getTodos()) },
-      };
     },
 
     renderCall(args, theme) {
-      const indices = `[${args.indices.join(", ")}]`;
-      return new Text(
-        theme.fg("toolTitle", theme.bold("edit_todos ")) +
-          theme.fg("warning", `${args.action} `) +
-          theme.fg("accent", indices),
-        0,
-        0,
-      );
+      if (args.action === "add") {
+        const todos = args.todos ?? [];
+        const MAX_PREVIEW_ITEMS = 3;
+        const MAX_TEXT_LEN = 40;
+        const previews = todos
+          .slice(0, MAX_PREVIEW_ITEMS)
+          .map((t) =>
+            t.text.length > MAX_TEXT_LEN ? t.text.slice(0, MAX_TEXT_LEN) + "…" : t.text,
+          );
+        let previewText = previews.join(", ");
+        const remaining = todos.length - MAX_PREVIEW_ITEMS;
+        if (remaining > 0) {
+          previewText = `${previewText}… (+${remaining} more)`;
+        }
+        return new Text(
+          theme.fg("toolTitle", theme.bold("edit_todos ")) +
+            theme.fg("warning", "add ") +
+            theme.fg("accent", previewText),
+          0,
+          0,
+        );
+      } else {
+        const indices = `[${(args.indices ?? []).join(", ")}]`;
+        return new Text(
+          theme.fg("toolTitle", theme.bold("edit_todos ")) +
+            theme.fg("warning", `${args.action} `) +
+            theme.fg("accent", indices),
+          0,
+          0,
+        );
+      }
     },
 
     renderResult: renderToolResult,

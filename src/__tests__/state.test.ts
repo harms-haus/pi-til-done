@@ -6,6 +6,7 @@ import {
   incrementAutoContinue,
   resetAutoContinue,
   resetState,
+  appendTodos,
   reconstructState,
   updateUI,
 } from "../state";
@@ -104,6 +105,59 @@ describe("state management", () => {
       expect(incrementAutoContinue()).toBe(4);
       resetAutoContinue();
       expect(incrementAutoContinue()).toBe(1);
+    });
+  });
+
+  describe("appendTodos", () => {
+    it("appends to empty list", () => {
+      expect(getTodos()).toEqual([]);
+      appendTodos([{ text: "new task", status: "not_started" }]);
+      expect(getTodos()).toEqual([{ text: "new task", status: "not_started" }]);
+    });
+
+    it("appends to existing list", () => {
+      setTodos([
+        { text: "task 1", status: "not_started" },
+        { text: "task 2", status: "completed" },
+      ]);
+      appendTodos([{ text: "task 3", status: "in_progress" }]);
+      expect(getTodos()).toEqual([
+        { text: "task 1", status: "not_started" },
+        { text: "task 2", status: "completed" },
+        { text: "task 3", status: "in_progress" },
+      ]);
+    });
+
+    it("resets autoContinueCount", () => {
+      incrementAutoContinue();
+      incrementAutoContinue();
+      expect(incrementAutoContinue()).toBe(3);
+      appendTodos([{ text: "appended", status: "not_started" }]);
+      expect(incrementAutoContinue()).toBe(1); // Counter was reset to 0
+    });
+
+    it("mutation isolation", () => {
+      const input: TodoItem[] = [{ text: "task", status: "not_started" }];
+      appendTodos(input);
+      // Mutate the input array after appending
+      input.push({ text: "extra", status: "not_started" });
+      // State should be unaffected
+      expect(getTodos()).toEqual([{ text: "task", status: "not_started" }]);
+    });
+
+    it("multiple items appended", () => {
+      setTodos([{ text: "existing", status: "not_started" }]);
+      appendTodos([
+        { text: "new 1", status: "not_started" },
+        { text: "new 2", status: "in_progress" },
+        { text: "new 3", status: "completed" },
+      ]);
+      expect(getTodos()).toEqual([
+        { text: "existing", status: "not_started" },
+        { text: "new 1", status: "not_started" },
+        { text: "new 2", status: "in_progress" },
+        { text: "new 3", status: "completed" },
+      ]);
     });
   });
 });

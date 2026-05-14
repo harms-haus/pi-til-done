@@ -29,6 +29,12 @@ export function updateTodoStatus(indices: readonly number[], newStatus: TodoStat
   autoContinueCount = 0;
 }
 
+/** Appends new todo items to the existing list. Resets auto-continue counter. */
+export function appendTodos(newItems: readonly TodoItem[]): void {
+  todos = [...todos, ...newItems];
+  autoContinueCount = 0;
+}
+
 /** Increments and returns the auto-continue counter */
 export function incrementAutoContinue(): number {
   return ++autoContinueCount;

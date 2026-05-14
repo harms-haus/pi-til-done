@@ -302,6 +302,27 @@ describe("edit_todos tool", () => {
     }
   });
 
+  it("returns error when indices is missing for status actions", async () => {
+    const tool = createEditTodosTool();
+    const ctx = createMockContext();
+    setTodos([{ text: "Task 1", status: "not_started" as const }]);
+
+    const result = await tool.execute(
+      "call-id",
+      { action: "start" } as any,
+      new AbortController().signal,
+      () => {},
+      ctx,
+    );
+
+    if (result.content[0].type === "text") {
+      expect(result.content[0].text).toContain("Error");
+    }
+    expect(result.details.error).toBeDefined();
+    // Verify no mutation occurred
+    expect(getTodos()[0].status).toBe("not_started");
+  });
+
   it("atomic: no mutation when any index is invalid", async () => {
     const tool = createEditTodosTool();
     const ctx = createMockContext();
@@ -382,6 +403,201 @@ describe("edit_todos tool", () => {
 
     expect(setStatus).toHaveBeenCalled();
   });
+
+  describe("'add' action", () => {
+    it("appends items with not_started status", async () => {
+      const tool = createEditTodosTool();
+      const ctx = createMockContext();
+      setTodos([{ text: "existing task", status: "in_progress" as const }]);
+
+      const result = await tool.execute(
+        "call-id",
+        { action: "add", todos: [{ text: "new task 1" }, { text: "new task 2" }] },
+        new AbortController().signal,
+        () => {},
+        ctx,
+      );
+
+      const todos = getTodos();
+      expect(todos).toHaveLength(3);
+      expect(todos[0]).toEqual({ text: "existing task", status: "in_progress" });
+      expect(todos[1]).toEqual({ text: "new task 1", status: "not_started" });
+      expect(todos[2]).toEqual({ text: "new task 2", status: "not_started" });
+      expect(result.content[0].type).toBe("text");
+      if (result.content[0].type === "text") {
+        expect(result.content[0].text).toContain("Added 2 item(s)");
+      }
+      expect(result.details?.action).toBe("edit");
+    });
+
+    it("adds items to empty list", async () => {
+      const tool = createEditTodosTool();
+      const ctx = createMockContext();
+
+      const result = await tool.execute(
+        "call-id",
+        { action: "add", todos: [{ text: "first task" }] },
+        new AbortController().signal,
+        () => {},
+        ctx,
+      );
+
+      const todos = getTodos();
+      expect(todos).toHaveLength(1);
+      expect(todos[0]).toEqual({ text: "first task", status: "not_started" });
+      expect(result.details?.action).toBe("edit");
+    });
+
+    it("returns error when todos parameter is missing", async () => {
+      const tool = createEditTodosTool();
+      const ctx = createMockContext();
+
+      const result = await tool.execute(
+        "call-id",
+        { action: "add" } as any,
+        new AbortController().signal,
+        () => {},
+        ctx,
+      );
+
+      if (result.content[0].type === "text") {
+        expect(result.content[0].text).toContain("Error");
+        expect(result.content[0].text).toContain("'todos' is required");
+      }
+      expect(result.details?.error).toBe("todos required for add");
+      expect(result.details?.todos).toEqual([]);
+    });
+
+    it("returns error when todos array is empty", async () => {
+      const tool = createEditTodosTool();
+      const ctx = createMockContext();
+
+      const result = await tool.execute(
+        "call-id",
+        { action: "add", todos: [] },
+        new AbortController().signal,
+        () => {},
+        ctx,
+      );
+
+      if (result.content[0].type === "text") {
+        expect(result.content[0].text).toContain("Error");
+        expect(result.content[0].text).toContain("'todos' is required");
+      }
+      expect(result.details?.error).toBe("todos required for add");
+      expect(result.details?.todos).toEqual([]);
+    });
+
+    it("returns error for oversized text with index info", async () => {
+      const tool = createEditTodosTool();
+      const ctx = createMockContext();
+      const longText = "a".repeat(MAX_TODO_TEXT_LENGTH + 1);
+
+      const result = await tool.execute(
+        "call-id",
+        { action: "add", todos: [{ text: "valid" }, { text: longText }, { text: "also valid" }] },
+        new AbortController().signal,
+        () => {},
+        ctx,
+      );
+
+      if (result.content[0].type === "text") {
+        expect(result.content[0].text).toContain("Error");
+        expect(result.content[0].text).toContain("index 1");
+        expect(result.content[0].text).toContain("exceeds maximum text length");
+      }
+      expect(result.details?.error).toBe("text too long");
+      expect(result.details?.todos).toEqual([]);
+    });
+
+    it("allows adding up to exactly MAX_TODOS", async () => {
+      const tool = createEditTodosTool();
+      const ctx = createMockContext();
+      const existing = Array.from({ length: 99 }, (_, i) => ({
+        text: `task ${i}`,
+        status: "not_started" as const,
+      }));
+      setTodos(existing);
+
+      const result = await tool.execute(
+        "call-id",
+        { action: "add", todos: [{ text: "last task" }] },
+        new AbortController().signal,
+        () => {},
+        ctx,
+      );
+
+      expect(getTodos()).toHaveLength(100);
+      expect(result.details.error).toBeUndefined();
+      expect(result.details.todos).toHaveLength(100);
+    });
+
+    it("returns error when adding would exceed MAX_TODOS", async () => {
+      const tool = createEditTodosTool();
+      const ctx = createMockContext();
+      // Fill to MAX_TODOS - 1
+      const existing = Array.from({ length: 99 }, (_, i) => ({
+        text: `task ${i}`,
+        status: "not_started" as const,
+      }));
+      setTodos(existing);
+
+      const result = await tool.execute(
+        "call-id",
+        { action: "add", todos: [{ text: "a" }, { text: "b" }] },
+        new AbortController().signal,
+        () => {},
+        ctx,
+      );
+
+      if (result.content[0].type === "text") {
+        expect(result.content[0].text).toContain("Error");
+        expect(result.content[0].text).toContain(
+          "adding 2 item(s) would exceed maximum of 100 todos",
+        );
+      }
+      expect(result.details?.error).toBe("max todos exceeded");
+      expect(result.details?.todos).toEqual([]);
+      // Verify no mutation
+      expect(getTodos()).toHaveLength(99);
+    });
+
+    it("returns details with cloned todos", async () => {
+      const tool = createEditTodosTool();
+      const ctx = createMockContext();
+
+      const result = await tool.execute(
+        "call-id",
+        { action: "add", todos: [{ text: "task 1" }] },
+        new AbortController().signal,
+        () => {},
+        ctx,
+      );
+
+      const resultTodos = result.details?.todos as Array<{ text: string; status: string }>;
+      expect(resultTodos).toEqual([{ text: "task 1", status: "not_started" }]);
+      // Verify it's a clone — mutating details should not affect state
+      resultTodos[0].text = "modified";
+      expect(getTodos()[0].text).toBe("task 1");
+    });
+
+    it("calls updateUI via context", async () => {
+      const tool = createEditTodosTool();
+      const setStatus = vi.fn();
+      const ctx = createMockContext();
+      ctx.ui.setStatus = setStatus;
+
+      await tool.execute(
+        "call-id",
+        { action: "add", todos: [{ text: "task 1" }] },
+        new AbortController().signal,
+        () => {},
+        ctx,
+      );
+
+      expect(setStatus).toHaveBeenCalled();
+    });
+  });
 });
 
 describe("renderCall", () => {
@@ -423,6 +639,114 @@ describe("renderCall", () => {
       expect(result.toString()).toContain("start");
       expect(result.toString()).toContain("[0, 2]");
     }
+  });
+
+  describe("edit_todos renderCall for 'add' action", () => {
+    it("shows single item text", () => {
+      const tool = createEditTodosTool();
+      const mockTheme = createMockTheme();
+      if (tool.renderCall) {
+        const result = tool.renderCall(
+          { action: "add", todos: [{ text: "Fix bug in parser" }] },
+          mockTheme,
+          {
+            expanded: false,
+            isPartial: false,
+          } as any,
+        );
+
+        const text = result.toString();
+        expect(text).toContain("edit_todos");
+        expect(text).toContain("add");
+        expect(text).toContain("Fix bug in parser");
+      }
+    });
+
+    it("shows comma-separated previews for multiple items", () => {
+      const tool = createEditTodosTool();
+      const mockTheme = createMockTheme();
+      if (tool.renderCall) {
+        const result = tool.renderCall(
+          {
+            action: "add",
+            todos: [{ text: "Fix bug" }, { text: "Add tests" }, { text: "Write docs" }],
+          },
+          mockTheme,
+          { expanded: false, isPartial: false } as any,
+        );
+
+        const text = result.toString();
+        expect(text).toContain("Fix bug");
+        expect(text).toContain("Add tests");
+        expect(text).toContain("Write docs");
+      }
+    });
+
+    it("shows (+N more) suffix when more than 3 items", () => {
+      const tool = createEditTodosTool();
+      const mockTheme = createMockTheme();
+      if (tool.renderCall) {
+        const result = tool.renderCall(
+          {
+            action: "add",
+            todos: [
+              { text: "Fix bug" },
+              { text: "Add tests" },
+              { text: "Write docs" },
+              { text: "Refactor module" },
+              { text: "Deploy" },
+            ],
+          },
+          mockTheme,
+          { expanded: false, isPartial: false } as any,
+        );
+
+        const text = result.toString();
+        expect(text).toContain("Fix bug");
+        expect(text).toContain("Add tests");
+        expect(text).toContain("Write docs");
+        expect(text).toContain("(+2 more)");
+        // Should NOT show items beyond the first 3 in preview
+        const stripped = text.replace(/\[\w+\]/g, "");
+        expect(stripped).not.toContain("Refactor module");
+        expect(stripped).not.toContain("Deploy");
+      }
+    });
+
+    it("truncates long item text with ellipsis", () => {
+      const tool = createEditTodosTool();
+      const mockTheme = createMockTheme();
+      if (tool.renderCall) {
+        const longText = "A".repeat(50);
+        const result = tool.renderCall({ action: "add", todos: [{ text: longText }] }, mockTheme, {
+          expanded: false,
+          isPartial: false,
+        } as any);
+
+        const text = result.toString();
+        expect(text).toContain("…");
+        // Should contain first 40 chars
+        expect(text).toContain("A".repeat(40));
+        // Should NOT contain the full 50-char text
+        const stripped = text.replace(/\[\w+\]/g, "");
+        expect(stripped).not.toContain(longText);
+      }
+    });
+
+    it("handles undefined todos gracefully", () => {
+      const tool = createEditTodosTool();
+      const mockTheme = createMockTheme();
+      if (tool.renderCall) {
+        const result = tool.renderCall({ action: "add" } as any, mockTheme, {
+          expanded: false,
+          isPartial: false,
+        } as any);
+
+        const text = result.toString();
+        expect(text).toContain("edit_todos");
+        expect(text).toContain("add");
+      }
+    });
   });
 });
 

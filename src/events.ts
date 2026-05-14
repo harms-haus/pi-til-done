@@ -54,10 +54,26 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
 
   // ── agent_end — Auto-continue when incomplete todos remain ──
 
-  pi.on("agent_end", async (_, _ctx) => {
+  /**
+   * Check if the last assistant message was aborted (user interrupted).
+   * Returns true if the agent was interrupted, false if it stopped naturally.
+   */
+  function wasAborted(messages: { role: string; stopReason?: string }[]): boolean {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "assistant") {
+        return messages[i].stopReason === "aborted";
+      }
+    }
+    return false;
+  }
+
+  pi.on("agent_end", async (event, _ctx) => {
     const todos = getTodos();
 
     if (todos.length === 0) return;
+
+    // If the user interrupted the agent, don't auto-continue
+    if (wasAborted(event.messages)) return;
 
     // Circuit breaker
     const count = incrementAutoContinue();

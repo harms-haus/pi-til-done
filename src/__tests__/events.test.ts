@@ -258,7 +258,7 @@ describe("agent_end handler", () => {
     registerEventHandlers(api);
 
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
-    await agentEndHandler({}, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
     expect(sendUserMessage).toHaveBeenCalled();
     const prompt = sendUserMessage.mock.calls[0][0];
@@ -277,7 +277,7 @@ describe("agent_end handler", () => {
     registerEventHandlers(api);
 
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
-    await agentEndHandler({}, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
     const prompt = sendUserMessage.mock.calls[0][0];
     const lines = prompt.split("\n");
@@ -299,7 +299,7 @@ describe("agent_end handler", () => {
     registerEventHandlers(mockApi.api);
 
     const agentEndHandler = mockApi.on.mock.calls.find((call) => call[0] === "agent_end")![1];
-    await agentEndHandler({}, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
     expect(mockApi.sendUserMessage).not.toHaveBeenCalled();
   });
@@ -314,7 +314,7 @@ describe("agent_end handler", () => {
     registerEventHandlers(mockApi.api);
 
     const agentEndHandler = mockApi.on.mock.calls.find((call) => call[0] === "agent_end")![1];
-    await agentEndHandler({}, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
     expect(mockApi.sendUserMessage).not.toHaveBeenCalled();
   });
@@ -329,7 +329,7 @@ describe("agent_end handler", () => {
     registerEventHandlers(mockApi.api);
 
     const agentEndHandler = mockApi.on.mock.calls.find((call) => call[0] === "agent_end")![1];
-    await agentEndHandler({}, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
     expect(mockApi.sendUserMessage).not.toHaveBeenCalled();
   });
@@ -347,7 +347,7 @@ describe("agent_end handler", () => {
 
     // Call handler MAX_AUTO_CONTINUE + 1 times
     for (let i = 0; i <= MAX_AUTO_CONTINUE; i++) {
-      await agentEndHandler({}, {});
+      await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
     }
 
     expect(mockApi.sendMessage).toHaveBeenCalled();
@@ -366,7 +366,7 @@ describe("agent_end handler", () => {
 
     // Call handler MAX_AUTO_CONTINUE + 1 times
     for (let i = 0; i <= MAX_AUTO_CONTINUE; i++) {
-      await agentEndHandler({}, {});
+      await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
     }
 
     // Should only have been called MAX_AUTO_CONTINUE times, not more
@@ -382,15 +382,15 @@ describe("agent_end handler", () => {
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
 
     // First call should work
-    await agentEndHandler({}, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
     expect(sendUserMessage).toHaveBeenCalledTimes(1);
 
     // Second call should also work
-    await agentEndHandler({}, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
     expect(sendUserMessage).toHaveBeenCalledTimes(2);
 
     // Third call should also work
-    await agentEndHandler({}, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
     expect(sendUserMessage).toHaveBeenCalledTimes(3);
   });
 
@@ -403,9 +403,9 @@ describe("agent_end handler", () => {
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
 
     // Call multiple times - counter should keep incrementing
-    await agentEndHandler({}, {});
-    await agentEndHandler({}, {});
-    await agentEndHandler({}, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
     // The counter should have incremented each time
     // This is tested implicitly by the fact that sendUserMessage gets called 3 times
@@ -423,7 +423,7 @@ describe("agent_end handler", () => {
     registerEventHandlers(api);
 
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
-    await agentEndHandler({}, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
     const prompt = sendUserMessage.mock.calls[0][0];
     expect(prompt).toContain("Remaining items:");
@@ -441,9 +441,24 @@ describe("agent_end handler", () => {
     registerEventHandlers(api);
 
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
-    await agentEndHandler({}, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
 
     const prompt = sendUserMessage.mock.calls[0][0];
     expect(prompt).toContain("Next action: edit_todos with action 'complete' and indices [1]");
+  });
+
+  it("does not auto-continue when agent was aborted (user interrupt)", async () => {
+    const { api, on, sendUserMessage } = createMockAPI();
+    setTodos([
+      { text: "task 1", status: "completed" },
+      { text: "task 2", status: "not_started" },
+    ]);
+
+    registerEventHandlers(api);
+
+    const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "aborted" }] }, {});
+
+    expect(sendUserMessage).not.toHaveBeenCalled();
   });
 });

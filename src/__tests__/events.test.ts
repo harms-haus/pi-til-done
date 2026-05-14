@@ -468,7 +468,8 @@ describe("agent_end handler", () => {
   });
 
   it("does not auto-continue when agent was aborted (user interrupt)", async () => {
-    const { api, on, sendUserMessage, sendMessage } = createMockAPI();
+    const { api, on, sendUserMessage } = createMockAPI();
+    const ctx = createMockContext();
     setTodos([
       { text: "task 1", status: "completed" },
       { text: "task 2", status: "not_started" },
@@ -477,16 +478,17 @@ describe("agent_end handler", () => {
     registerEventHandlers(api);
 
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
-    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "aborted" }] }, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "aborted" }] }, ctx);
     vi.advanceTimersByTime(3000);
 
     expect(sendUserMessage).not.toHaveBeenCalled();
-    // Also no countdown message on abort
-    expect(sendMessage).not.toHaveBeenCalled();
+    // Also no countdown widget on abort
+    expect(ctx.ui.setWidget).not.toHaveBeenCalled();
   });
 
-  it("shows countdown message before auto-continue", async () => {
-    const { api, on, sendMessage } = createMockAPI();
+  it("shows countdown widget before auto-continue", async () => {
+    const { api, on, sendUserMessage } = createMockAPI();
+    const ctx = createMockContext();
     setTodos([
       { text: "task 1", status: "not_started" },
     ]);
@@ -494,13 +496,63 @@ describe("agent_end handler", () => {
     registerEventHandlers(api);
 
     const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
-    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, ctx);
 
-    // Countdown message should appear immediately (before timer fires)
-    expect(sendMessage).toHaveBeenCalledTimes(1);
-    const msg = sendMessage.mock.calls[0][0];
-    expect(msg.customType).toBe("til-done-countdown");
-    expect(msg.content).toContain("3s");
-    expect(msg.display).toBe(true);
+    // Countdown widget should appear immediately with 3s
+    expect(ctx.ui.setWidget).toHaveBeenCalledWith(
+      "til-done-countdown",
+      expect.arrayContaining([expect.stringContaining("3s")]),
+      { placement: "aboveEditor" },
+    );
+
+    // Advance 1s → widget updated to 2s
+    vi.advanceTimersByTime(1000);
+    expect(ctx.ui.setWidget).toHaveBeenCalledWith(
+      "til-done-countdown",
+      expect.arrayContaining([expect.stringContaining("2s")]),
+      { placement: "aboveEditor" },
+    );
+
+    // Advance 1s → widget updated to 1s
+    vi.advanceTimersByTime(1000);
+    expect(ctx.ui.setWidget).toHaveBeenCalledWith(
+      "til-done-countdown",
+      expect.arrayContaining([expect.stringContaining("1s")]),
+      { placement: "aboveEditor" },
+    );
+
+    // Advance 1s → widget cleared and sendUserMessage called
+    vi.advanceTimersByTime(1000);
+    expect(ctx.ui.setWidget).toHaveBeenCalledWith("til-done-countdown", undefined);
+    expect(sendUserMessage).toHaveBeenCalled();
+  });
+
+  it("clears widget and handles gracefully when sendUserMessage throws during countdown", async () => {
+    const { api, on, sendUserMessage } = createMockAPI();
+    const ctx = createMockContext();
+    sendUserMessage.mockImplementation(() => {
+      throw new Error("Agent already processing user input");
+    });
+    setTodos([{ text: "task 1", status: "not_started" }]);
+
+    registerEventHandlers(api);
+
+    const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, ctx);
+
+    // Widget shows 3s immediately
+    expect(ctx.ui.setWidget).toHaveBeenCalledWith(
+      "til-done-countdown",
+      expect.arrayContaining([expect.stringContaining("3s")]),
+      { placement: "aboveEditor" },
+    );
+
+    // Advance 3s to trigger the sendUserMessage throw
+    vi.advanceTimersByTime(3000);
+
+    // Widget should be cleared even though sendUserMessage threw
+    expect(ctx.ui.setWidget).toHaveBeenCalledWith("til-done-countdown", undefined);
+    expect(sendUserMessage).toHaveBeenCalled();
+    // No crash — test completes without unhandled exception
   });
 });

@@ -5,6 +5,10 @@ import { isIncomplete } from "./validation";
 import { formatTodoListText, formatRemainingList } from "./formatting";
 import { getTodos, setTodos, reconstructState, updateUI, incrementAutoContinue } from "./state";
 
+// Module-level countdown handle — prevents stacked intervals when agent_end
+// fires while a previous countdown is still active (race condition guard).
+let activeCountdown: ReturnType<typeof setInterval> | null = null;
+
 // ── Message Renderers ──
 
 export function registerMessageRenderers(pi: ExtensionAPI): void {
@@ -28,12 +32,22 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
   // ── State Reconstruction Events ──
 
   pi.on("session_start", async (_, ctx) => {
+    if (activeCountdown !== null) {
+      clearInterval(activeCountdown);
+      activeCountdown = null;
+      if (ctx.hasUI) { ctx.ui.setWidget("til-done-countdown", undefined); }
+    }
     const todos = reconstructState(ctx);
     setTodos(todos);
     updateUI(ctx, todos);
   });
 
   pi.on("session_tree", async (_, ctx) => {
+    if (activeCountdown !== null) {
+      clearInterval(activeCountdown);
+      activeCountdown = null;
+      if (ctx.hasUI) { ctx.ui.setWidget("til-done-countdown", undefined); }
+    }
     const todos = reconstructState(ctx);
     setTodos(todos);
     updateUI(ctx, todos);
@@ -72,7 +86,7 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
     return false;
   }
 
-  pi.on("agent_end", async (event, _ctx) => {
+  pi.on("agent_end", async (event, ctx) => {
     const todos = getTodos();
 
     if (todos.length === 0) return;
@@ -132,23 +146,50 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
       `Next action: edit_todos with action '${nextAction}' and indices [${nextIdx}]`,
     ].join("\n");
 
-    // Show countdown message immediately (no turn trigger)
-    pi.sendMessage(
-      {
-        customType: "til-done-countdown",
-        content: "Auto-continuing in 3s... (type anything to interrupt)",
-        display: true,
-      },
-      { triggerTurn: false },
-    );
+    // Show live countdown and auto-continue after 3 seconds
+    if (ctx.hasUI) {
+      // Clear any existing countdown to prevent stacked intervals
+      if (activeCountdown !== null) { clearInterval(activeCountdown); }
 
-    // Delay to let agent loop fully wind down and give user a grace period
-    setTimeout(() => {
-      try {
-        pi.sendUserMessage(prompt);
-      } catch {
-        // User already started typing — skip auto-continue
-      }
-    }, 3000);
+      let remaining = 3;
+      const interval = setInterval(() => {
+        try {
+          remaining--;
+          if (remaining > 0) {
+            ctx.ui.setWidget("til-done-countdown", [
+              `⏳ Auto-continuing in ${remaining}s... (type anything to interrupt)`,
+            ], { placement: "aboveEditor" });
+          } else {
+            clearInterval(interval);
+            activeCountdown = null;
+            ctx.ui.setWidget("til-done-countdown", undefined);
+            try {
+              pi.sendUserMessage(prompt);
+            } catch {
+              // User already started typing — skip auto-continue
+            }
+          }
+        } catch {
+          clearInterval(interval);
+          activeCountdown = null;
+          ctx.ui.setWidget("til-done-countdown", undefined);
+        }
+      }, 1000);
+      activeCountdown = interval;
+
+      // Show initial widget immediately
+      ctx.ui.setWidget("til-done-countdown", [
+        "⏳ Auto-continuing in 3s... (type anything to interrupt)",
+      ], { placement: "aboveEditor" });
+    } else {
+      // Fallback for RPC/print mode — no UI available
+      setTimeout(() => {
+        try {
+          pi.sendUserMessage(prompt);
+        } catch {
+          // User already started typing — skip auto-continue
+        }
+      }, 3000);
+    }
   });
 }

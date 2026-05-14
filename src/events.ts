@@ -127,6 +127,6 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
       `Next action: edit_todos with action '${nextAction}' and indices [${nextIdx}]`,
     ].join("\n");
 
-    pi.sendUserMessage(prompt);
+    pi.sendUserMessage(prompt, { deliverAs: "followUp" });
   });
 }

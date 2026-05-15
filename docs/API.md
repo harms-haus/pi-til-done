@@ -110,6 +110,7 @@ const ACTION_LABELS: Record<string, string> = {
   start:    "Started",
   complete: "Completed",
   abandon:  "Abandoned",
+  add:      "Added",
 };
 ```
 
@@ -128,6 +129,7 @@ Holds two pieces of mutable module-level state: `todos: TodoItem[]` and `autoCon
 | `getTodos`                          | `() => readonly TodoItem[]`                                                                                        | Readonly todo array | None                                                        | `events.ts` (before_agent_start, agent_end); `tools.ts` (all three tools) |
 | `setTodos`                          | `(newTodos: TodoItem[]) => void`                                                                                   | `void`            | Replaces `todos`; resets `autoContinueCount` to `0`         | `events.ts` (session_start, session_tree); `createWriteTodosTool`         |
 | `updateTodoStatus`                  | `(indices: readonly number[], newStatus: TodoStatus) => void`                                                      | `void`            | Updates status at each index; resets `autoContinueCount` to `0` | `createEditTodosTool`                                                  |
+| `appendTodos`                       | `(newItems: readonly TodoItem[]) => void`                                                                          | `void`            | Spreads `newItems` onto existing `todos` array; resets `autoContinueCount` to `0` | `createEditTodosTool` (add action) |
 | `incrementAutoContinue`             | `() => number`                                                                                                     | New count (after increment) | Increments `autoContinueCount` by 1                         | `events.ts` (agent_end)                                                   |
 | `resetAutoContinue`                 | `() => void`                                                                                                       | `void`            | Sets `autoContinueCount` to `0`                             | Not called in production source code; available for test suites and external use to reset the counter directly. |
 | `resetState`                        | `() => void`                                                                                                       | `void`            | Clears `todos` and resets `autoContinueCount` to `0`        | Test suites only                                                            |
@@ -258,14 +260,24 @@ No parameters.
 
 ```ts
 const EditTodosParams = Type.Object({
-  action: StringEnum(["start", "complete", "abandon"] as const, {
-    description: "Action to apply to the specified indices",
+  action: StringEnum(["start", "complete", "abandon", "add"] as const, {
+    description: "Action to apply to the todo items",
   }),
-  indices: Type.Array(Type.Integer(), {
-    description: "0-based indices to apply the action to",
-    minItems: 1,
-    maxItems: 50,
-  }),
+  indices: Type.Optional(
+    Type.Array(Type.Integer(), {
+      description: "0-based indices to apply the action to (required for start/complete/abandon)",
+      minItems: 1,
+      maxItems: 50,
+    }),
+  ),
+  todos: Type.Optional(
+    Type.Array(
+      Type.Object({
+        text: Type.String({ description: "Description of the task", maxLength: 1000 }),
+      }),
+      { description: "Todo items to add (required for 'add' action)", maxItems: 50 },
+    ),
+  ),
 });
 ```
 
@@ -275,7 +287,7 @@ const EditTodosParams = Type.Object({
 |---------------------------|------------------------------------------------------|------------------------|-----------------------------------------------------------------------------|
 | `createWriteTodosTool`    | `() => ToolDefinition<typeof WriteTodosParams, TodoDetails>` | `ToolDefinition` | Replaces the entire todo list. Validates text length via [`findOversizedItem`](#5-validation-module-validationts); returns error if any item exceeds [`MAX_TODO_TEXT_LENGTH`](#2-constants). Calls [`setTodos`](#4-state-module-statets) and [`updateUI`](#updateui--detail). Returns `{ action: "write", todos, error? }` in `details`. |
 | `createListTodosTool`     | `() => ToolDefinition<typeof ListTodosParams, TodoDetails>`   | `ToolDefinition` | Returns formatted todo list via [`formatTodoListText`](#plain-text-formatting-llm-content). `details` has `action: "list"` and an empty `todos` array (list is read-only, no state change to persist). |
-| `createEditTodosTool`     | `() => ToolDefinition<typeof EditTodosParams, TodoDetails>`   | `ToolDefinition` | Validates that todos exist and all indices are in range (atomic — if any index is invalid, no changes are applied). Maps `action` to status via [`ACTION_TO_STATUS`](#3-lookup-maps), calls [`updateTodoStatus`](#4-state-module-statets) and [`updateUI`](#updateui--detail). Returns `{ action: "edit", todos, error? }` in `details`. |
+| `createEditTodosTool`     | `() => ToolDefinition<typeof EditTodosParams, TodoDetails>`   | `ToolDefinition` | Two execution paths: **status actions** (`start`/`complete`/`abandon`) require `indices`, validate range atomically, map action to status via [`ACTION_TO_STATUS`](#3-lookup-maps), and call [`updateTodoStatus`](#4-state-module-statets); **add action** requires `todos`, validates text length and [`MAX_TODOS`](#2-constants), and calls [`appendTodos`](#4-state-module-statets). Both paths call [`updateUI`](#updateui--detail). Returns `{ action: "edit", todos, error? }` in `details`. |
 
 ### Tool Execution Summary
 
@@ -284,6 +296,8 @@ const EditTodosParams = Type.Object({
 | `write_todos`   | `{ action: "write", todos: [...], }`       | `{ action: "write", todos: [], error: "text too long" }` |
 | `list_todos`    | `{ action: "list", todos: [] }`            | N/A (always succeeds)                              |
 | `edit_todos`    | `{ action: "edit", todos: [...] }`         | `{ action: "edit", todos: [], error: "..." }`      |
+
+**`edit_todos` error values**: `"no todos exist"`, `"indices required"`, `"indices [...] out of range (0 to N)"`, `"todos required for add"`, `"text too long"`, `"max todos exceeded"`.
 
 Each tool's `renderResult` delegates to [`renderToolResult`](#tool-result-renderer).
 

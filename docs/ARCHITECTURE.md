@@ -26,8 +26,8 @@ index.ts
   │     ├── validation.ts (isIncomplete)
   │     └── types.ts (MAX_AUTO_CONTINUE)
   ├── tools.ts (createWriteTodosTool, createListTodosTool, createEditTodosTool)
-  │     ├── types.ts (ACTION_TO_STATUS, ACTION_LABELS, INITIAL_STATUS, MAX_TODO_TEXT_LENGTH)
-  │     ├── state.ts (getTodos, setTodos, updateTodoStatus, updateUI)
+  │     ├── types.ts (ACTION_TO_STATUS, ACTION_LABELS, INITIAL_STATUS, MAX_TODO_TEXT_LENGTH, MAX_TODOS)
+  │     ├── state.ts (getTodos, setTodos, appendTodos, updateTodoStatus, updateUI)
   │     ├── validation.ts (cloneTodos, findOversizedItem)
   │     └── formatting.ts (formatTodoListText, renderToolResult)
   └── types.ts (types, constants, lookup maps)
@@ -65,13 +65,14 @@ This is a **singleton** — one shared instance per loaded module. There is no p
 | `getTodos()` | Returns readonly reference; no side effects |
 | `setTodos(newTodos)` | Replaces list; **resets** to `0` |
 | `updateTodoStatus(indices, newStatus)` | Updates items in-place; **resets** to `0` |
+| `appendTodos(newItems)` | Spreads `newItems` onto existing list; **resets** to `0` |
 | `incrementAutoContinue()` | Increments and returns new value |
 | `resetAutoContinue()` | Resets to `0` |
 | `resetState()` | Clears both `todos` and `autoContinueCount` (testing only) |
 
 ### Auto-Continue Counter Reset Rules
 
-- `setTodos()` and `updateTodoStatus()` always reset the counter to `0`, breaking the auto-continue chain whenever the list is written or edited.
+- `setTodos()`, `updateTodoStatus()`, and `appendTodos()` always reset the counter to `0`, breaking the auto-continue chain whenever the list is written or edited.
 - `agent_end` calls `incrementAutoContinue()` but **does not** reset it — the counter accumulates across iterations until the circuit breaker trips.
 - `session_start` and `session_tree` call `reconstructState()`, which calls `setTodos()` — **this resets the counter to `0`**. While this follows from `setTodos()`'s reset behavior, the chain is worth calling out explicitly: session events → `reconstructState()` → `setTodos()` → counter reset.
 

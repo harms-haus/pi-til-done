@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-05-14
+### Added
+- `edit_todos` 'add' action: append new items to an existing todo list without replacing it
+- `appendTodos()` state accessor in `state.ts` — spreads new items onto existing array, resets auto-continue counter
+- `ACTION_LABELS["add"] = "Added"` in `types.ts`
+- `EditTodosParams` schema updated: `indices` is now optional (required only for status actions), new optional `todos` parameter (required for `add` action), `"add"` added to action enum
+- `createEditTodosTool.execute()` branched into two paths: `add` (validates `todos`, text length, `MAX_TODOS` boundary, appends) vs. status actions (validates `indices`, applies status)
+- `createEditTodosTool.renderCall()` branched: `add` shows truncated item previews (up to 3 items, 40-char truncation, `+N more` suffix) vs. status actions show indices
+- Prompt guideline for `add` action (guidelines now total 7)
+- Defense-in-depth text length validation for `add` action
+- `MAX_TODOS` overflow guard for `add` action
+- 20 new tests (151 → 171 total)
+
 ## [1.0.0] - 2025-05-14
 ### Added
 - Initial release of pi-til-done: a pi-coding-agent extension for iterative todo lists

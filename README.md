@@ -1,7 +1,7 @@
 # pi-til-done
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 
 A pi-coding-agent extension that provides an iterative todo list — tracks tasks and automatically loops the agent until every task is marked done.
 
@@ -103,7 +103,7 @@ This loop continues until all items are either `completed` or `abandoned`, or un
 |------|---------|----------------|
 | `write_todos` | Replace the entire todo list. All items start as `not_started`. | `todos: { text: string }[]` |
 | `list_todos` | View the current list with statuses and indices. | _(none)_ |
-| `edit_todos` | Apply an action to one or more items by index. Batch operations are atomic. | `action: "start" \| "complete" \| "abandon"`, `indices: number[]` |
+| `edit_todos` | Apply a status action to items by index, or append new items via the 'add' action. Batch operations are atomic. | `action: "start" \| "complete" \| "abandon" \| "add"`, `indices?: number[]`, `todos?: { text: string }[]` |
 
 See [docs/TOOLS.md](docs/TOOLS.md) for full tool reference and schema details.
 
@@ -125,7 +125,7 @@ Key design patterns:
 
 - **Event-sourced state** — tool results store `TodoDetails` in message entry `details`, enabling state reconstruction from any point in the session tree.
 - **Dual rendering** — tool content uses plain-text icons (for LLM consumption), while TUI renderers apply color themes and strikethrough for completed/abandoned items.
-- **Counter reset semantics** — the auto-continue counter resets on `write_todos` and `edit_todos` (user-directed actions), but _not_ on `agent_end` (auto iterations). This ensures the 20-iteration limit counts only consecutive auto-continues.
+- **Counter reset semantics** — the auto-continue counter resets on `write_todos` and `edit_todos` (user-directed actions, including the 'add' action), but _not_ on `agent_end` (auto iterations). This ensures the 20-iteration limit counts only consecutive auto-continues.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed diagrams and data flow.
 

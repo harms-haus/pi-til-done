@@ -1,7 +1,7 @@
 # pi-til-done
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-1.1.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
 
 A pi-coding-agent extension that provides an iterative todo list — tracks tasks and automatically loops the agent until every task is marked done.
 
@@ -53,6 +53,7 @@ The agent uses the three tools to plan and track work:
 {
   "tool": "write_todos",
   "parameters": {
+    "mode": "replace",
     "todos": [
       { "text": "Read requirements from docs/" },
       { "text": "Implement the core logic in src/" },
@@ -101,9 +102,9 @@ This loop continues until all items are either `completed` or `abandoned`, or un
 
 | Tool | Purpose | Key Parameters |
 |------|---------|----------------|
-| `write_todos` | Replace the entire todo list. All items start as `not_started`. | `todos: { text: string }[]` |
+| `write_todos` | Manage the todo list via modes: `replace` (clear & replace), `append` (add to end), `insert` (insert at index). New items start as `not_started`. | `mode: "replace" \| "append" \| "insert"`, `todos: { text: string }[]`, `index?: number` |
 | `list_todos` | View the current list with statuses and indices. | _(none)_ |
-| `edit_todos` | Apply a status action to items by index, or append new items via the 'add' action. Batch operations are atomic. | `action: "start" \| "complete" \| "abandon" \| "add"`, `indices?: number[]`, `todos?: { text: string }[]` |
+| `edit_todos` | Apply a status action to items by index. Batch operations are atomic. | `action: "start" \| "complete" \| "abandon"`, `indices: number[]` |
 
 See [docs/TOOLS.md](docs/TOOLS.md) for full tool reference and schema details.
 
@@ -125,7 +126,7 @@ Key design patterns:
 
 - **Event-sourced state** — tool results store `TodoDetails` in message entry `details`, enabling state reconstruction from any point in the session tree.
 - **Dual rendering** — tool content uses plain-text icons (for LLM consumption), while TUI renderers apply color themes and strikethrough for completed/abandoned items.
-- **Counter reset semantics** — the auto-continue counter resets on `write_todos` and `edit_todos` (user-directed actions, including the 'add' action), but _not_ on `agent_end` (auto iterations). This ensures the 20-iteration limit counts only consecutive auto-continues.
+- **Counter reset semantics** — the auto-continue counter resets on `write_todos` (all modes) and `edit_todos` (user-directed actions), but _not_ on `agent_end` (auto iterations). This ensures the 20-iteration limit counts only consecutive auto-continues.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed diagrams and data flow.
 

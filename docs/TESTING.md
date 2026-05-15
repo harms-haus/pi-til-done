@@ -8,7 +8,7 @@
 | **Config file** | `vitest.config.ts` |
 | **Test file pattern** | `src/**/*.test.ts` |
 | **Setup file** | `src/__tests__/setup.ts` |
-| **Total tests** | 171 (across 6 test files, all passing) |
+| **Total tests** | 189 (across 6 test files, all passing) |
 
 ### Run Commands
 
@@ -27,8 +27,8 @@ npm run test:watch  # Watch mode
 |---|---|---|
 | `src/__tests__/index.test.ts` | `index.ts` | 4 |
 | `src/__tests__/events.test.ts` | `events.ts` | 27 |
-| `src/__tests__/state.test.ts` | `state.ts` | 30 |
-| `src/__tests__/tools.test.ts` | `tools.ts` | 41 |
+| `src/__tests__/state.test.ts` | `state.ts` | 37 |
+| `src/__tests__/tools.test.ts` | `tools.ts` | 52 |
 | `src/__tests__/formatting.test.ts` | `formatting.ts` | 31 |
 | `src/__tests__/validation.test.ts` | `validation.ts` | 38 |
 
@@ -165,7 +165,7 @@ vi.advanceTimersByTime(3000);
 - Shows countdown widget (`til-done-countdown`) with 3s → 2s → 1s progression before auto-continue
 - Clears widget and handles gracefully when `sendUserMessage` throws (no unhandled exception)
 
-### `state.test.ts` (30 tests)
+### `state.test.ts` (37 tests)
 
 #### `getTodos` / `setTodos` (3 tests)
 - Returns empty array initially
@@ -187,6 +187,15 @@ vi.advanceTimersByTime(3000);
 - Mutation isolation: mutating the input array after calling appendTodos does not affect state
 - Appends multiple items with mixed statuses correctly
 
+#### `insertTodos` (7 tests)
+- Inserts at beginning (index 0)
+- Inserts at middle (index 1)
+- Inserts at end (index = length)
+- Inserts multiple items at once
+- Resets autoContinueCount to 0
+- Mutation isolation: mutating the input array after calling insertTodos does not affect state
+- Works on empty list at index 0
+
 #### `reconstructState` (8 tests)
 - Returns empty array for empty branch or when no matching tool results exist
 - Finds the **last** matching tool result via reverse scan
@@ -204,9 +213,9 @@ vi.advanceTimersByTime(3000);
 - Does nothing when `ctx.hasUI` is `false`
 - Single-pass computation: completed count and active lines correct together
 
-### `tools.test.ts` (41 tests)
+### `tools.test.ts` (52 tests)
 
-#### `write_todos` (6 tests)
+#### `write_todos` — replace mode (6 tests)
 - Creates items with `not_started` status
 - Returns content with formatted todo list and item count
 - Returns details with `action: "write"` and cloned todos (mutation isolation verified)
@@ -214,11 +223,38 @@ vi.advanceTimersByTime(3000);
 - Reports correct index in error message for oversized items at position > 0
 - Calls `updateUI` via context
 
+#### `write_todos` — append mode (9 tests)
+- Appends items with `not_started` status to existing list
+- Appends to empty list
+- Returns content with `"Appended"` text
+- Returns details with `action: "write"` and cloned todos (mutation isolation verified)
+- Rejects oversized text
+- Allows appending up to exactly `MAX_TODOS` boundary
+- Rejects when appending would exceed `MAX_TODOS` (no mutation)
+- Calls `updateUI` via context
+- Does not change status of existing todos
+
 #### `list_todos` (4 tests)
 - Returns formatted todo list in content
 - Returns details with `action: "list"`
 - Does not modify state
 - Returns `"No todos"` when state is empty
+
+#### `write_todos` — insert mode (14 tests)
+- Inserts items at beginning (index 0)
+- Inserts items at middle
+- Inserts items at end (index = length)
+- Inserts multiple items at once
+- Returns content with `"Inserted N item(s) at index X"` text
+- Returns details with `action: "write"` and cloned todos (mutation isolation verified)
+- Requires `index` parameter (returns error when missing)
+- Rejects negative index
+- Rejects index beyond list length
+- Rejects oversized text
+- Rejects when inserting would exceed `MAX_TODOS` (no mutation)
+- Does not change status of existing todos
+- **Atomicity**: no mutation when index is invalid
+- Calls `updateUI` via context
 
 #### `edit_todos` — status actions (11 tests)
 - Applies `start` action to specified indices (transitions to `in_progress`)
@@ -233,26 +269,12 @@ vi.advanceTimersByTime(3000);
 - Returns details with `action: "edit"` and cloned todos
 - Calls `updateUI` via context
 
-#### `edit_todos` — 'add' action (9 tests)
-- Appends new items to the todos list
-- Works correctly with an empty list
-- Returns error when `todos` parameter is missing for add action
-- Returns error when todos is empty
-- Rejects items with oversized text
-- Accepts items at exactly the `MAX_TODOS` boundary
-- Rejects items that would overflow `MAX_TODOS`
-- Returns details with `action: "edit"` and cloned todos
-- Calls `updateUI` via context
-
-#### `renderCall` (8 tests)
-- `write_todos`: shows name and item count
+#### `renderCall` (5 tests)
+- `write_todos` (replace mode): shows name, mode, and item count
 - `list_todos`: shows name
-- `edit_todos` — status action: shows name, action, and indices
-- `edit_todos` — 'add' action with single item: shows name, action, and item text
-- `edit_todos` — 'add' action with multiple items: shows name, action, and item texts
-- `edit_todos` — 'add' action with many items: shows `+N more` suffix after truncation
-- `edit_todos` — 'add' action with many items: truncates long text correctly
-- `edit_todos` — 'add' action with undefined todos: shows name and action only
+- `edit_todos`: shows name, action, and indices
+- `write_todos` (append mode): shows name, mode, and item count
+- `write_todos` (insert mode): shows name, mode, item count, and `@INDEX` suffix
 
 #### `renderResult` (3 tests)
 - Renders error message with error styling when `details.error` is set

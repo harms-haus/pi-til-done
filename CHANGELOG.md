@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-15
+### Changed
+- `write_todos` now requires a `mode` parameter: `"replace"` (clears and replaces the entire list), `"append"` (appends to end without changing existing item statuses), `"insert"` (inserts at a specified index, requires `index` param, doesn't change existing statuses)
+- `edit_todos` no longer supports the `"add"` action — only `start`, `complete`, and `abandon`
+- `edit_todos` `indices` parameter is now required (no longer optional)
+- `ACTION_LABELS` no longer includes `"add": "Added"` — append/insert functionality moved to `write_todos` modes
+
+### Added
+- `insertTodos(atIndex, newItems)` state accessor in `state.ts` — inserts items at a specific position, resets auto-continue counter
+- `index` parameter on `write_todos` (required for `insert` mode, validated range 0 to list length inclusive)
+- Index range validation for `insert` mode
+- `MAX_TODOS` overflow guard for `append` and `insert` modes
+- Defense-in-depth text validation for `append` and `insert` modes
+- 18 new tests (171 → 189 total)
+
+### Removed
+- `edit_todos` `"add"` action (functionality replaced by `write_todos` `mode: "append"`)
+- `edit_todos` `todos` parameter
+- `ACTION_LABELS["add"]`
+
 ## [1.1.0] - 2026-05-14
 ### Added
 - `edit_todos` 'add' action: append new items to an existing todo list without replacing it

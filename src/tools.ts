@@ -11,41 +11,39 @@ import {
 } from "./types";
 import { cloneTodos, findOversizedItem } from "./validation";
 import { formatTodoListText, renderToolResult } from "./formatting";
-import { getTodos, setTodos, appendTodos, updateTodoStatus, updateUI } from "./state";
+import { getTodos, setTodos, appendTodos, insertTodos, updateTodoStatus, updateUI } from "./state";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 // ── Schemas ──
 
 const WriteTodosParams = Type.Object({
+  mode: StringEnum(["replace", "append", "insert"] as const, {
+    description: "Mode: 'replace' clears and replaces the entire list, 'append' adds to the end, 'insert' inserts at a specific index",
+  }),
+  index: Type.Optional(
+    Type.Integer({
+      description: "0-based index to insert at (required for 'insert' mode)",
+    }),
+  ),
   todos: Type.Array(
     Type.Object({
       text: Type.String({ description: "Description of the task", maxLength: 1000 }),
     }),
-    { description: "Ordered list of todo items to write", maxItems: 100 },
+    { description: "Ordered list of todo items", maxItems: 100 },
   ),
 });
 
 const ListTodosParams = Type.Object({});
 
 const EditTodosParams = Type.Object({
-  action: StringEnum(["start", "complete", "abandon", "add"] as const, {
+  action: StringEnum(["start", "complete", "abandon"] as const, {
     description: "Action to apply to the todo items",
   }),
-  indices: Type.Optional(
-    Type.Array(Type.Integer(), {
-      description: "0-based indices to apply the action to (required for start/complete/abandon)",
-      minItems: 1,
-      maxItems: 50,
-    }),
-  ),
-  todos: Type.Optional(
-    Type.Array(
-      Type.Object({
-        text: Type.String({ description: "Description of the task", maxLength: 1000 }),
-      }),
-      { description: "Todo items to add (required for 'add' action)", maxItems: 50 },
-    ),
-  ),
+  indices: Type.Array(Type.Integer(), {
+    description: "0-based indices to apply the action to",
+    minItems: 1,
+    maxItems: 50,
+  }),
 });
 
 // ── Tool Factories ──
@@ -55,15 +53,16 @@ export function createWriteTodosTool(): ToolDefinition<typeof WriteTodosParams, 
     name: "write_todos",
     label: "Write Todos",
     description:
-      "Write a full list of todo items, replacing any existing list. Each item starts as 'not_started'. Use this to create or replace the entire plan.",
+      "Manage a todo list with modes: 'replace' clears and replaces the entire list, 'append' adds items to the end without changing existing item statuses, 'insert' inserts items at a specific index without changing existing item statuses. Each new item starts as 'not_started'.",
     parameters: WriteTodosParams,
-    promptSnippet: "Manage a todo list: write, list, edit (start/complete/abandon by indices)",
+    promptSnippet: "Manage a todo list: write (replace/append/insert), list, edit (start/complete/abandon by indices)",
     promptGuidelines: [
-      "Use write_todos to create or replace the full todo list at the start of a task.",
+      "Use write_todos with mode 'replace' to create or replace the full todo list at the start of a task.",
+      "Use write_todos with mode 'append' to add new items to the end of the existing list.",
+      "Use write_todos with mode 'insert' and an 'index' parameter to insert items at a specific position.",
       "Use edit_todos with action 'start' and an array of 0-based indices to begin work on specific items.",
       "Use edit_todos with action 'complete' and an array of 0-based indices to mark items as done.",
       "Use edit_todos with action 'abandon' and an array of 0-based indices when items are no longer needed.",
-      "Use edit_todos with action 'add' and a 'todos' array to append new items to the existing list.",
       "Use list_todos to review the current todo list.",
       "Always call edit_todos with action 'start' on the next item before working on it, then 'complete' when done.",
     ],
@@ -87,28 +86,153 @@ export function createWriteTodosTool(): ToolDefinition<typeof WriteTodosParams, 
         };
       }
 
-      const newTodos = params.todos.map((t) => ({
-        text: t.text,
-        status: INITIAL_STATUS as TodoStatus,
-      }));
-      setTodos(newTodos);
-      updateUI(ctx, getTodos());
+      const currentTodos = getTodos();
 
+      if (params.mode === "replace") {
+        const newTodos = params.todos.map((t) => ({
+          text: t.text,
+          status: INITIAL_STATUS as TodoStatus,
+        }));
+        setTodos(newTodos);
+        updateUI(ctx, getTodos());
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Wrote ${newTodos.length} todo item(s)\n\n${formatTodoListText(getTodos())}`,
+            },
+          ],
+          details: { action: "write" as const, todos: cloneTodos(getTodos()) },
+        };
+      }
+
+      if (params.mode === "append") {
+        // Check total count
+        if (currentTodos.length + params.todos.length > MAX_TODOS) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: appending ${params.todos.length} item(s) would exceed maximum of ${MAX_TODOS} todos (currently ${currentTodos.length})`,
+              },
+            ],
+            details: {
+              action: "write" as const,
+              todos: [],
+              error: "max todos exceeded",
+            },
+          };
+        }
+
+        const newItems: TodoItem[] = params.todos.map((t) => ({
+          text: t.text,
+          status: INITIAL_STATUS as TodoStatus,
+        }));
+
+        appendTodos(newItems);
+        updateUI(ctx, getTodos());
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Appended ${newItems.length} item(s)\n\n${formatTodoListText(getTodos())}`,
+            },
+          ],
+          details: { action: "write" as const, todos: cloneTodos(getTodos()) },
+        };
+      }
+
+      if (params.mode === "insert") {
+        // Validate index parameter
+        if (params.index === undefined || params.index === null) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Error: 'index' is required for the 'insert' mode",
+              },
+            ],
+            details: {
+              action: "write" as const,
+              todos: [],
+              error: "index required for insert",
+            },
+          };
+        }
+
+        // Validate index range (0 to length inclusive)
+        if (params.index < 0 || params.index > currentTodos.length) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: index ${params.index} out of range (0 to ${currentTodos.length})`,
+              },
+            ],
+            details: {
+              action: "write" as const,
+              todos: [],
+              error: `index ${params.index} out of range (0 to ${currentTodos.length})`,
+            },
+          };
+        }
+
+        // Check total count
+        if (currentTodos.length + params.todos.length > MAX_TODOS) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: inserting ${params.todos.length} item(s) would exceed maximum of ${MAX_TODOS} todos (currently ${currentTodos.length})`,
+              },
+            ],
+            details: {
+              action: "write" as const,
+              todos: [],
+              error: "max todos exceeded",
+            },
+          };
+        }
+
+        const newItems: TodoItem[] = params.todos.map((t) => ({
+          text: t.text,
+          status: INITIAL_STATUS as TodoStatus,
+        }));
+
+        insertTodos(params.index, newItems);
+        updateUI(ctx, getTodos());
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Inserted ${newItems.length} item(s) at index ${params.index}\n\n${formatTodoListText(getTodos())}`,
+            },
+          ],
+          details: { action: "write" as const, todos: cloneTodos(getTodos()) },
+        };
+      }
+
+      // Should be unreachable due to schema validation, but just in case
       return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Wrote ${newTodos.length} todo item(s)\n\n${formatTodoListText(getTodos())}`,
-          },
-        ],
-        details: { action: "write" as const, todos: cloneTodos(getTodos()) },
+        content: [{ type: "text" as const, text: `Error: unknown mode '${params.mode}'` }],
+        details: { action: "write" as const, todos: [], error: `unknown mode '${params.mode}'` },
       };
     },
 
     renderCall(args, theme) {
+      const modeLabel = args.mode ?? "replace";
+      const count = args.todos?.length ?? 0;
+      let extra = "";
+      if (modeLabel === "insert" && args.index !== undefined) {
+        extra = ` @${args.index}`;
+      }
       return new Text(
         theme.fg("toolTitle", theme.bold("write_todos ")) +
-          theme.fg("muted", `(${args.todos.length} items)`),
+          theme.fg("warning", `${modeLabel} `) +
+          theme.fg("muted", `(${count} items${extra})`),
         0,
         0,
       );
@@ -145,167 +269,77 @@ export function createEditTodosTool(): ToolDefinition<typeof EditTodosParams, To
     name: "edit_todos",
     label: "Edit Todos",
     description:
-      "Apply an action ('start', 'complete', 'abandon', or 'add') to todo items. Use 'add' to append new items. For start/complete/abandon, provide 0-based indices. Batch operations are atomic — if any index is invalid, no changes are applied.",
+      "Apply an action ('start', 'complete', or 'abandon') to todo items by 0-based index. Batch operations are atomic — if any index is invalid, no changes are applied.",
     parameters: EditTodosParams,
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (params.action === "add") {
-        // Validate todos parameter
-        if (!params.todos || params.todos.length === 0) {
-          return {
-            content: [
-              { type: "text" as const, text: "Error: 'todos' is required for the 'add' action" },
-            ],
-            details: { action: "edit" as const, todos: [], error: "todos required for add" },
-          };
-        }
-
-        // Defense-in-depth: check text lengths
-        const oversizedIdx = findOversizedItem(params.todos, MAX_TODO_TEXT_LENGTH);
-        if (oversizedIdx !== -1) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error: todo item at index ${oversizedIdx} exceeds maximum text length (${MAX_TODO_TEXT_LENGTH} characters)`,
-              },
-            ],
-            details: {
-              action: "edit" as const,
-              todos: [],
-              error: "text too long",
-            },
-          };
-        }
-
-        // Check total count
-        const currentTodos = getTodos();
-        if (currentTodos.length + params.todos.length > MAX_TODOS) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error: adding ${params.todos.length} item(s) would exceed maximum of ${MAX_TODOS} todos (currently ${currentTodos.length})`,
-              },
-            ],
-            details: {
-              action: "edit" as const,
-              todos: [],
-              error: "max todos exceeded",
-            },
-          };
-        }
-
-        // Map to TodoItem[] with INITIAL_STATUS
-        const newItems: TodoItem[] = params.todos.map((t) => ({
-          text: t.text,
-          status: INITIAL_STATUS as TodoStatus,
-        }));
-
-        appendTodos(newItems);
-        updateUI(ctx, getTodos());
-
+      // Validate indices parameter
+      if (!params.indices || params.indices.length === 0) {
         return {
           content: [
             {
               type: "text" as const,
-              text: `Added ${params.todos.length} item(s):\n\n${formatTodoListText(getTodos())}`,
+              text: "Error: 'indices' is required for start/complete/abandon actions",
             },
           ],
-          details: { action: "edit" as const, todos: cloneTodos(getTodos()) },
-        };
-      } else {
-        // Validate indices parameter
-        if (!params.indices || params.indices.length === 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "Error: 'indices' is required for start/complete/abandon actions",
-              },
-            ],
-            details: { action: "edit" as const, todos: [], error: "indices required" },
-          };
-        }
-
-        const currentTodos = getTodos();
-
-        if (currentTodos.length === 0) {
-          return {
-            content: [{ type: "text" as const, text: "Error: no todos exist" }],
-            details: { action: "edit" as const, todos: [], error: "no todos exist" },
-          };
-        }
-
-        // Validate all indices atomically
-        const invalid = params.indices.filter((i) => i < 0 || i >= currentTodos.length);
-        if (invalid.length > 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error: indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
-              },
-            ],
-            details: {
-              action: "edit" as const,
-              todos: [],
-              error: `indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
-            },
-          };
-        }
-
-        // Apply action
-        const newStatus = ACTION_TO_STATUS[params.action];
-        updateTodoStatus(params.indices, newStatus);
-        updateUI(ctx, getTodos());
-
-        const actionLabel = ACTION_LABELS[params.action];
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `${actionLabel} [${params.indices.join(", ")}]\n\n${formatTodoListText(getTodos())}`,
-            },
-          ],
-          details: { action: "edit" as const, todos: cloneTodos(getTodos()) },
+          details: { action: "edit" as const, todos: [], error: "indices required" },
         };
       }
+
+      const currentTodos = getTodos();
+
+      if (currentTodos.length === 0) {
+        return {
+          content: [{ type: "text" as const, text: "Error: no todos exist" }],
+          details: { action: "edit" as const, todos: [], error: "no todos exist" },
+        };
+      }
+
+      // Validate all indices atomically
+      const invalid = params.indices.filter((i) => i < 0 || i >= currentTodos.length);
+      if (invalid.length > 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
+            },
+          ],
+          details: {
+            action: "edit" as const,
+            todos: [],
+            error: `indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
+          },
+        };
+      }
+
+      // Apply action
+      const newStatus = ACTION_TO_STATUS[params.action];
+      updateTodoStatus(params.indices, newStatus);
+      updateUI(ctx, getTodos());
+
+      const actionLabel = ACTION_LABELS[params.action];
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `${actionLabel} [${params.indices.join(", ")}]\n\n${formatTodoListText(getTodos())}`,
+          },
+        ],
+        details: { action: "edit" as const, todos: cloneTodos(getTodos()) },
+      };
     },
 
     renderCall(args, theme) {
-      if (args.action === "add") {
-        const todos = args.todos ?? [];
-        const MAX_PREVIEW_ITEMS = 3;
-        const MAX_TEXT_LEN = 40;
-        const previews = todos
-          .slice(0, MAX_PREVIEW_ITEMS)
-          .map((t) =>
-            t.text.length > MAX_TEXT_LEN ? t.text.slice(0, MAX_TEXT_LEN) + "…" : t.text,
-          );
-        let previewText = previews.join(", ");
-        const remaining = todos.length - MAX_PREVIEW_ITEMS;
-        if (remaining > 0) {
-          previewText = `${previewText}… (+${remaining} more)`;
-        }
-        return new Text(
-          theme.fg("toolTitle", theme.bold("edit_todos ")) +
-            theme.fg("warning", "add ") +
-            theme.fg("accent", previewText),
-          0,
-          0,
-        );
-      } else {
-        const indices = `[${(args.indices ?? []).join(", ")}]`;
-        return new Text(
-          theme.fg("toolTitle", theme.bold("edit_todos ")) +
-            theme.fg("warning", `${args.action} `) +
-            theme.fg("accent", indices),
-          0,
-          0,
-        );
-      }
+      const indices = `[${(args.indices ?? []).join(", ")}]`;
+      return new Text(
+        theme.fg("toolTitle", theme.bold("edit_todos ")) +
+          theme.fg("warning", `${args.action} `) +
+          theme.fg("accent", indices),
+        0,
+        0,
+      );
     },
 
     renderResult: renderToolResult,

@@ -35,6 +35,16 @@ export function appendTodos(newItems: readonly TodoItem[]): void {
   autoContinueCount = 0;
 }
 
+/** Inserts new todo items at a specific index. Resets auto-continue counter. */
+export function insertTodos(atIndex: number, newItems: readonly TodoItem[]): void {
+  todos = [
+    ...todos.slice(0, atIndex),
+    ...newItems,
+    ...todos.slice(atIndex),
+  ];
+  autoContinueCount = 0;
+}
+
 /** Increments and returns the auto-continue counter */
 export function incrementAutoContinue(): number {
   return ++autoContinueCount;

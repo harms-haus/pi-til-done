@@ -64,5 +64,4 @@ export const ACTION_LABELS: Record<string, string> = {
   start: "Started",
   complete: "Completed",
   abandon: "Abandoned",
-  add: "Added",
 };

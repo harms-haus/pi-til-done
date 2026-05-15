@@ -27,7 +27,7 @@ index.ts
   │     └── types.ts (MAX_AUTO_CONTINUE)
   ├── tools.ts (createWriteTodosTool, createListTodosTool, createEditTodosTool)
   │     ├── types.ts (ACTION_TO_STATUS, ACTION_LABELS, INITIAL_STATUS, MAX_TODO_TEXT_LENGTH, MAX_TODOS)
-  │     ├── state.ts (getTodos, setTodos, appendTodos, updateTodoStatus, updateUI)
+  │     ├── state.ts (getTodos, setTodos, appendTodos, insertTodos, updateTodoStatus, updateUI)
   │     ├── validation.ts (cloneTodos, findOversizedItem)
   │     └── formatting.ts (formatTodoListText, renderToolResult)
   └── types.ts (types, constants, lookup maps)
@@ -66,13 +66,14 @@ This is a **singleton** — one shared instance per loaded module. There is no p
 | `setTodos(newTodos)` | Replaces list; **resets** to `0` |
 | `updateTodoStatus(indices, newStatus)` | Updates items in-place; **resets** to `0` |
 | `appendTodos(newItems)` | Spreads `newItems` onto existing list; **resets** to `0` |
+| `insertTodos(atIndex, newItems)` | Inserts `newItems` at `atIndex`; **resets** to `0` |
 | `incrementAutoContinue()` | Increments and returns new value |
 | `resetAutoContinue()` | Resets to `0` |
 | `resetState()` | Clears both `todos` and `autoContinueCount` (testing only) |
 
 ### Auto-Continue Counter Reset Rules
 
-- `setTodos()`, `updateTodoStatus()`, and `appendTodos()` always reset the counter to `0`, breaking the auto-continue chain whenever the list is written or edited.
+- `setTodos()`, `updateTodoStatus()`, `appendTodos()`, and `insertTodos()` always reset the counter to `0`, breaking the auto-continue chain whenever the list is written or edited.
 - `agent_end` calls `incrementAutoContinue()` but **does not** reset it — the counter accumulates across iterations until the circuit breaker trips.
 - `session_start` and `session_tree` call `reconstructState()`, which calls `setTodos()` — **this resets the counter to `0`**. While this follows from `setTodos()`'s reset behavior, the chain is worth calling out explicitly: session events → `reconstructState()` → `setTodos()` → counter reset.
 
@@ -274,13 +275,13 @@ Tool parameters are validated by TypeBox schemas at the pi-coding-agent level:
 
 | Tool | Schema | Constraints |
 |---|---|---|
-| `write_todos` | `WriteTodosParams` | `todos.text` maxLength 1000, `todos` maxItems 100 |
-| `edit_todos` | `EditTodosParams` | `indices` minItems 1, maxItems 50, `action` enum |
+| `write_todos` | `WriteTodosParams` | `mode` enum (`replace`/`append`/`insert`), `todos.text` maxLength 1000, `todos` maxItems 100, optional `index` (integer, required for `insert`) |
+| `edit_todos` | `EditTodosParams` | `action` enum (`start`/`complete`/`abandon`), `indices` minItems 1, maxItems 50 |
 | `list_todos` | `ListTodosParams` | No parameters |
 
 ### Defense-in-Depth
 
-`write_todos` performs a secondary text length check (`findOversizedItem`) inside `execute()` in addition to the TypeBox schema, ensuring oversized items are caught even if schema validation is bypassed.
+`write_todos` performs a secondary text length check (`findOversizedItem`) inside `execute()` for all modes (`replace`, `append`, `insert`) in addition to the TypeBox schema, ensuring oversized items are caught even if schema validation is bypassed. The `append` and `insert` modes additionally enforce `MAX_TODOS` overflow guards (rejecting calls that would exceed the 100-item limit) and `insert` validates the `index` range (must be 0 to current list length inclusive).
 
 ---
 

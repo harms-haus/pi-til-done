@@ -49,12 +49,14 @@ interface TodoDetails {
 
 ## 2. `write_todos`
 
-**Purpose**: Replace the entire todo list with a new set of items. All items start as `not_started`. Existing items are discarded.
+**Purpose**: Manage the todo list with three modes: `replace` (clears and replaces the entire list), `append` (adds items to the end), and `insert` (inserts items at a specific index). All new items start as `not_started`. Append and insert modes do not change existing item statuses.
 
 ### Parameters
 
 | Parameter | Type | Required | Constraints |
 |---|---|---|---|
+| `mode` | `enum` | Yes | One of: `"replace"`, `"append"`, `"insert"` |
+| `index` | `integer` | Conditional | Required for `"insert"` mode. 0-based insertion position. |
 | `todos` | `array` | Yes | Max 100 items |
 | `todos[].text` | `string` | Yes | Max 1000 characters |
 
@@ -62,44 +64,74 @@ interface TodoDetails {
 
 ```ts
 const WriteTodosParams = Type.Object({
+  mode: StringEnum(["replace", "append", "insert"] as const, {
+    description: "Mode: 'replace' clears and replaces the entire list, 'append' adds to the end, 'insert' inserts at a specific index",
+  }),
+  index: Type.Optional(
+    Type.Integer({
+      description: "0-based index to insert at (required for 'insert' mode)",
+    }),
+  ),
   todos: Type.Array(
     Type.Object({
-      text: Type.String({
-        description: "Description of the task",
-        maxLength: 1000,
-      }),
+      text: Type.String({ description: "Description of the task", maxLength: 1000 }),
     }),
-    {
-      description: "Ordered list of todo items to write",
-      maxItems: 100,
-    },
+    { description: "Ordered list of todo items", maxItems: 100 },
   ),
 });
 ```
 
 ### Execute Behavior
 
-1. **Defense-in-depth validation**: Calls `findOversizedItem(params.todos, 1000)` to scan every item's text length.
-2. **Oversized error**: If any item exceeds 1000 characters, returns immediately with an error message and `details: { action: "write", todos: [], error: "text too long" }`. No state is modified.
-3. **Map to TodoItem**: Each input item is converted to `{ text, status: "not_started" }`.
-4. **Replace state**: Calls `setTodos(newTodos)`, which replaces the full list and resets the auto-continue counter to `0`.
-5. **Sync UI**: Calls `updateUI(ctx, getTodos())` to refresh the status bar and active-items display.
-6. **Return**: Content string `"Wrote N todo item(s)\n\n<formatted list>"` with `details: { action: "write", todos: clonedTodos }`.
+All modes share an initial defense-in-depth check:
+
+1. **Text length validation**: Calls `findOversizedItem(params.todos, 1000)` to scan every item's text length. If any item exceeds 1000 characters, returns immediately with an error message and `details: { action: "write", todos: [], error: "text too long" }`. No state is modified.
+
+After this check, execution branches by mode:
+
+#### Replace mode
+
+1. **Map to TodoItem**: Each input item is converted to `{ text, status: "not_started" }`.
+2. **Replace state**: Calls `setTodos(newTodos)`, which replaces the full list and resets the auto-continue counter to `0`.
+3. **Sync UI**: Calls `updateUI(ctx, getTodos())` to refresh the status bar and active-items display.
+4. **Return**: Content string `"Wrote N todo item(s)\n\n<formatted list>"` with `details: { action: "write", todos: clonedTodos }`.
+
+#### Append mode
+
+1. **MAX_TODOS boundary**: Checks `currentTodos.length + params.todos.length > MAX_TODOS`. If exceeded, returns an error showing current count and overflow. No state is modified.
+2. **Map to TodoItem**: Each input item is converted to `{ text, status: "not_started" }`.
+3. **Append to state**: Calls `appendTodos(newItems)`, which adds items to the end of the existing list and resets the auto-continue counter to `0`.
+4. **Sync UI**: Calls `updateUI(ctx, getTodos())`.
+5. **Return**: Content string `"Appended N item(s)\n\n<formatted list>"` with `details: { action: "write", todos: clonedTodos }`.
+
+#### Insert mode
+
+1. **Validate index parameter**: If `params.index` is `undefined` or `null`, returns error `"'index' is required for the 'insert' mode"`. No state is modified.
+2. **Validate index range**: Checks `params.index < 0 || params.index > currentTodos.length`. If out of range, returns an error showing the valid range. No state is modified.
+3. **MAX_TODOS boundary**: Checks `currentTodos.length + params.todos.length > MAX_TODOS`. If exceeded, returns an error. No state is modified.
+4. **Map to TodoItem**: Each input item is converted to `{ text, status: "not_started" }`.
+5. **Insert into state**: Calls `insertTodos(params.index, newItems)`, which splices items at the specified position and resets the auto-continue counter to `0`.
+6. **Sync UI**: Calls `updateUI(ctx, getTodos())`.
+7. **Return**: Content string `"Inserted N item(s) at index X\n\n<formatted list>"` with `details: { action: "write", todos: clonedTodos }`.
 
 ### Error Cases
 
 | Condition | Response Content | `details.error` | `details.todos` |
 |---|---|---|---|
 | Text > 1000 chars | `Error: todo item at index N exceeds maximum text length (1000 characters)` | `"text too long"` | `[]` |
+| Missing index (insert mode) | `Error: 'index' is required for the 'insert' mode` | `"index required for insert"` | `[]` |
+| Index out of range (insert mode) | `Error: index X out of range (0 to N)` | `"index X out of range (0 to N)"` | `[]` |
+| Max todos exceeded (append/insert) | `Error: appending/inserting N item(s) would exceed maximum of M todos (currently K)` | `"max todos exceeded"` | `[]` |
 
-### Example
+### Examples
 
-**Request**:
+**Replace mode**:
 
 ```json
 {
   "name": "write_todos",
   "arguments": {
+    "mode": "replace",
     "todos": [
       { "text": "Write database schema" },
       { "text": "Implement migration script" },
@@ -130,6 +162,59 @@ Wrote 3 todo item(s)
     { "text": "Add API endpoints", "status": "not_started" }
   ]
 }
+```
+
+**Append mode** (with 3 existing items):
+
+```json
+{
+  "name": "write_todos",
+  "arguments": {
+    "mode": "append",
+    "todos": [
+      { "text": "Write unit tests" },
+      { "text": "Update documentation" }
+    ]
+  }
+}
+```
+
+**Response content**:
+
+```
+Appended 2 item(s)
+
+– [0] Write database schema
+– [1] Implement migration script
+– [2] Add API endpoints
+– [3] Write unit tests
+– [4] Update documentation
+```
+
+**Insert mode** (insert at index 1):
+
+```json
+{
+  "name": "write_todos",
+  "arguments": {
+    "mode": "insert",
+    "index": 1,
+    "todos": [
+      { "text": "Critical fix" }
+    ]
+  }
+}
+```
+
+**Response content** (assuming 3 existing items):
+
+```
+Inserted 1 item(s) at index 1
+
+– [0] Write database schema
+– [1] Critical fix
+– [2] Implement migration script
+– [3] Add API endpoints
 ```
 
 ---
@@ -192,39 +277,27 @@ Icons: `–` (not_started), `●` (in_progress), `✓` (completed), `✗` (aband
 
 ## 4. `edit_todos`
 
-**Purpose**: Apply a status action (`start`/`complete`/`abandon`) to one or more todo items by their 0-based indices, or append new items via the `add` action. Batch status operations are **atomic** — if any index is invalid, no changes are applied.
+**Purpose**: Apply a status action (`start`/`complete`/`abandon`) to one or more todo items by their 0-based indices. Batch operations are **atomic** — if any index is invalid, no changes are applied.
 
 ### Parameters
 
 | Parameter | Type | Required | Constraints |
 |---|---|---|---|
-| `action` | `enum` | Yes | One of: `"start"`, `"complete"`, `"abandon"`, `"add"` |
-| `indices` | `integer[]` | Conditional | Min 1, max 50 items. Required for `start`/`complete`/`abandon`; omitted for `add`. |
-| `todos` | `array` | Conditional | Max 50 items. Required for `add`; omitted for `start`/`complete`/`abandon`. |
-| `todos[].text` | `string` | Yes (for add) | Max 1000 characters |
+| `action` | `enum` | Yes | One of: `"start"`, `"complete"`, `"abandon"` |
+| `indices` | `integer[]` | Yes | Min 1, max 50 items |
 
 **TypeBox schema** (`EditTodosParams`):
 
 ```ts
 const EditTodosParams = Type.Object({
-  action: StringEnum(["start", "complete", "abandon", "add"] as const, {
+  action: StringEnum(["start", "complete", "abandon"] as const, {
     description: "Action to apply to the todo items",
   }),
-  indices: Type.Optional(
-    Type.Array(Type.Integer(), {
-      description: "0-based indices to apply the action to (required for start/complete/abandon)",
-      minItems: 1,
-      maxItems: 50,
-    }),
-  ),
-  todos: Type.Optional(
-    Type.Array(
-      Type.Object({
-        text: Type.String({ description: "Description of the task", maxLength: 1000 }),
-      }),
-      { description: "Todo items to add (required for 'add' action)", maxItems: 50 },
-    ),
-  ),
+  indices: Type.Array(Type.Integer(), {
+    description: "0-based indices to apply the action to",
+    minItems: 1,
+    maxItems: 50,
+  }),
 });
 ```
 
@@ -235,11 +308,10 @@ const EditTodosParams = Type.Object({
 | `start` | `in_progress` | `Started` |
 | `complete` | `completed` | `Completed` |
 | `abandon` | `abandoned` | `Abandoned` |
-| `add` | _(appends items as `not_started`)_ | `Added` |
 
 Mappings are defined in `ACTION_TO_STATUS` and `ACTION_LABELS` in [`types.ts`](API.md#3-lookup-maps).
 
-### Execute Behavior — Status Actions (start/complete/abandon)
+### Execute Behavior
 
 1. **Missing indices guard**: If `params.indices` is absent or empty, returns error `"'indices' is required for start/complete/abandon actions"`. No state is modified.
 2. **Empty list check**: If `getTodos().length === 0`, returns error `"no todos exist"`. No state is modified.
@@ -248,26 +320,13 @@ Mappings are defined in `ACTION_TO_STATUS` and `ACTION_LABELS` in [`types.ts`](A
 5. **Sync UI**: Calls `updateUI(ctx, getTodos())`.
 6. **Return**: Content string `"<ActionLabel> [indices]\n\n<formatted list>"` with `details: { action: "edit", todos: clonedTodos }`.
 
-### Execute Behavior — Add Action
-
-1. **Missing todos guard**: If `params.todos` is absent or empty, returns error `"'todos' is required for the 'add' action"`. No state is modified.
-2. **Text length check**: Calls `findOversizedItem(params.todos, MAX_TODO_TEXT_LENGTH)` to scan every item's text length. If any item exceeds the limit, returns immediately with an error. No state is modified.
-3. **MAX_TODOS boundary**: Checks `currentTodos.length + params.todos.length > MAX_TODOS`. If exceeded, returns an error showing current count and overflow. No state is modified.
-4. **Map to TodoItem**: Each input item is converted to `{ text, status: INITIAL_STATUS }` (i.e. `not_started`).
-5. **Append to state**: Calls `appendTodos(newItems)`, which adds items to the end of the existing list and resets the auto-continue counter to `0`.
-6. **Sync UI**: Calls `updateUI(ctx, getTodos())`.
-7. **Return**: Content string `"Added N item(s):\n\n<formatted list>"` with `details: { action: "edit", todos: clonedTodos }`.
-
 ### Error Cases
 
 | Condition | Response Content | `details.error` | `details.todos` |
 |---|---|---|---|
-| No todos exist (status action) | `Error: no todos exist` | `"no todos exist"` | `[]` |
+| No todos exist | `Error: no todos exist` | `"no todos exist"` | `[]` |
 | Index out of range | `Error: indices [X, Y] out of range (0 to N)` | `"indices [X, Y] out of range (0 to N)"` | `[]` |
-| Missing indices for status action | `Error: 'indices' is required for start/complete/abandon actions` | `"indices required"` | `[]` |
-| Missing todos for add | `Error: 'todos' is required for the 'add' action` | `"todos required for add"` | `[]` |
-| Text too long in add | `Error: todo item at index N exceeds maximum text length (1000 characters)` | `"text too long"` | `[]` |
-| Max todos exceeded in add | `Error: adding N item(s) would exceed maximum of M todos (currently K)` | `"max todos exceeded"` | `[]` |
+| Missing indices | `Error: 'indices' is required for start/complete/abandon actions` | `"indices required"` | `[]` |
 
 ### Atomicity Guarantee
 
@@ -317,72 +376,6 @@ Error: indices [5] out of range (0 to 2)
 
 No items are modified — the call fails atomically.
 
-**Add items to an existing list**:
-
-```json
-{
-  "name": "edit_todos",
-  "arguments": {
-    "action": "add",
-    "todos": [
-      { "text": "Write unit tests" },
-      { "text": "Update documentation" }
-    ]
-  }
-}
-```
-
-**Response content** (assuming 3 items already exist):
-
-```
-Added 2 item(s):
-
-– [0] Write database schema
-● [1] Implement migration script
-✓ [2] Add API endpoints
-– [3] Write unit tests
-– [4] Update documentation
-```
-
-**Response details**:
-
-```json
-{
-  "action": "edit",
-  "todos": [
-    { "text": "Write database schema", "status": "not_started" },
-    { "text": "Implement migration script", "status": "in_progress" },
-    { "text": "Add API endpoints", "status": "completed" },
-    { "text": "Write unit tests", "status": "not_started" },
-    { "text": "Update documentation", "status": "not_started" }
-  ]
-}
-```
-
-**Add to an empty list**:
-
-```json
-{
-  "name": "edit_todos",
-  "arguments": {
-    "action": "add",
-    "todos": [
-      { "text": "First task" }
-    ]
-  }
-}
-```
-
-**Response content**:
-
-```
-Added 1 item(s):
-
-– [0] First task
-```
-
-New items are appended as `not_started` regardless of whether the list was previously empty.
-
 ---
 
 ## 5. Prompt Snippet & Guidelines
@@ -390,22 +383,23 @@ New items are appended as `not_started` regardless of whether the list was previ
 All three tools share the same `promptSnippet`, which is injected into the agent's context as a short summary of available todo management capabilities:
 
 ```
-Manage a todo list: write, list, edit (start/complete/abandon by indices)
+Manage a todo list: write (replace/append/insert), list, edit (start/complete/abandon by indices)
 ```
 
-The `write_todos` tool also defines **7 `promptGuidelines`** that are injected into agent context to guide tool usage:
+The `write_todos` tool also defines **8 `promptGuidelines`** that are injected into agent context to guide tool usage:
 
 | # | Guideline |
 |---|---|
-| 1 | Use `write_todos` to create or replace the full todo list at the start of a task. |
-| 2 | Use `edit_todos` with action `start` and an array of 0-based indices to begin work on specific items. |
-| 3 | Use `edit_todos` with action `complete` and an array of 0-based indices to mark items as done. |
-| 4 | Use `edit_todos` with action `abandon` and an array of 0-based indices when items are no longer needed. |
-| 5 | Use `edit_todos` with action `add` and a `todos` array to append new items to the existing list. |
-| 6 | Use `list_todos` to review the current todo list. |
-| 7 | Always call `edit_todos` with action `start` on the next item before working on it, then `complete` when done. |
+| 1 | Use `write_todos` with mode `'replace'` to create or replace the full todo list at the start of a task. |
+| 2 | Use `write_todos` with mode `'append'` to add new items to the end of the existing list. |
+| 3 | Use `write_todos` with mode `'insert'` and an `'index'` parameter to insert items at a specific position. |
+| 4 | Use `edit_todos` with action `'start'` and an array of 0-based indices to begin work on specific items. |
+| 5 | Use `edit_todos` with action `'complete'` and an array of 0-based indices to mark items as done. |
+| 6 | Use `edit_todos` with action `'abandon'` and an array of 0-based indices when items are no longer needed. |
+| 7 | Use `list_todos` to review the current todo list. |
+| 8 | Always call `edit_todos` with action `'start'` on the next item before working on it, then `'complete'` when done. |
 
-These guidelines enforce the intended workflow: write → start → (work) → complete → repeat. Guideline 7 is particularly important — it ensures the auto-continue engine can correctly identify `in_progress` items as the next item to work on.
+These guidelines enforce the intended workflow: write → start → (work) → complete → repeat. Guideline 8 is particularly important — it ensures the auto-continue engine can correctly identify `in_progress` items as the next item to work on.
 
 ---
 
@@ -417,10 +411,10 @@ Each tool defines a custom `renderCall` function for displaying the tool invocat
 
 | Tool | `renderCall` Output | Color Scheme |
 |---|---|---|
-| `write_todos` | `write_todos (N items)` | `write_todos` → bold + `toolTitle`; `(N items)` → `muted` |
+| `write_todos` (replace/append) | `write_todos MODE (N items)` | `write_todos` → bold + `toolTitle`; `MODE` → `warning`; `(N items)` → `muted` |
+| `write_todos` (insert) | `write_todos insert (N items @INDEX)` | Same as above with `@INDEX` suffix in `muted` |
 | `list_todos` | `list_todos` | bold + `toolTitle` |
-| `edit_todos` (status actions) | `edit_todos action [indices]` | `edit_todos` → bold + `toolTitle`; `action` → `warning`; `[indices]` → `accent` |
-| `edit_todos` (add action) | `edit_todos add previewText` | `edit_todos` → bold + `toolTitle`; `add` → `warning`; `previewText` → `accent` |
+| `edit_todos` | `edit_todos action [indices]` | `edit_todos` → bold + `toolTitle`; `action` → `warning`; `[indices]` → `accent` |
 
 ### Tool Result Rendering
 
@@ -433,16 +427,6 @@ Each tool defines a custom `renderCall` function for displaying the tool invocat
 | Success | Full themed todo list via [`renderTodoList`](API.md#themed-formatting-tui-rendering) |
 
 The themed list applies per-status coloring to icons (`not_started` → dim, `in_progress` → warning, `completed` → success, `abandoned` → error), accent-colored indices, and strikethrough + dim for terminal statuses (`completed`, `abandoned`).
-
-### Add Action Rendering Detail
-
-When `renderCall` receives an `add` action, it does **not** show raw JSON. Instead, it builds a preview from the `todos` array:
-
-- **Up to 3 items** are shown. Each item's text is truncated to **40 characters** with a `…` suffix if it exceeds that length.
-- Previews are joined with `, ` (comma-space).
-- If more than 3 items are being added, a **`… (+N more)`** suffix is appended (e.g. `"task one, task two, task three… (+2 more)"`).
-
-This keeps the TUI line compact while giving the user a quick sense of what is being appended.
 
 ---
 

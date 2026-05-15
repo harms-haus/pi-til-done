@@ -35,8 +35,6 @@ The `edit_todos` tool applies actions to items by index. Each action maps to a r
 | `complete` | `completed` |
 | `abandon` | `abandoned` |
 
-> **Note**: The `add` action is **not a status transition** — it appends new items (with `not_started` status) to the list via `appendTodos()` rather than modifying existing items. It does not appear in the `ACTION_TO_STATUS` lookup map.
-
 **Important**: The code does **not** check an item's current status before applying an action. Any action can be applied to any item regardless of its current state. The `updateTodoStatus()` function in [`src/state.ts`](../src/state.ts) directly overwrites the status field:
 
 ```ts
@@ -157,6 +155,7 @@ When the counter exceeds this threshold, the extension sends a `til-done-complet
 | `setTodos()` | **Reset to 0** | `state.ts` |
 | `updateTodoStatus()` | **Reset to 0** | `state.ts` |
 | `appendTodos()` | **Reset to 0** | `state.ts` |
+| `insertTodos()` | **Reset to 0** | `state.ts` |
 | `agent_end` handler | **Incremented by 1** via `incrementAutoContinue()` | `events.ts` |
 | `resetAutoContinue()` | **Reset to 0** (internal utility) | `state.ts` |
 | `resetState()` | **Reset to 0** (testing only) | `state.ts` |
@@ -177,7 +176,7 @@ When `agent_end` fires but all todos are already `completed` or `abandoned`, the
 
 ### Design Intent
 
-The counter only accumulates for **consecutive agent-driven auto-continues**. Any user or tool interaction that calls `setTodos()`, `updateTodoStatus()`, or `appendTodos()` resets the counter to zero. This means:
+The counter only accumulates for **consecutive agent-driven auto-continues**. Any user or tool interaction that calls `setTodos()`, `updateTodoStatus()`, `appendTodos()`, or `insertTodos()` resets the counter to zero. This means:
 
 - If the user edits todos via `write_todos`, the counter resets.
 - If the user manually changes a status via `edit_todos`, the counter resets.

@@ -60,7 +60,7 @@ Run `npm run lint` and `npm run format:check` before submitting to verify compli
 
 - All new features must have corresponding tests.
 - Run `npm test` before submitting — all tests must pass.
-- There are **171 tests across 6 test files** in `src/__tests__/`.
+- There are **189 tests across 6 test files** in `src/__tests__/`.
 
 ### Test Helpers
 
@@ -92,7 +92,7 @@ See [docs/TESTING.md](docs/TESTING.md) for detailed test patterns and examples.
 src/
   index.ts          — Extension entry point (registerMessageRenderers, registerEventHandlers, registerTool)
   types.ts          — Types, constants, lookup maps
-  state.ts          — Mutable state management (get/set/update/append/reset/reconstruct)
+  state.ts          — Mutable state management (get/set/update/append/insert/reset/reconstruct)
   events.ts         — Event handlers and message renderers
   tools.ts          — Tool definitions (write_todos, list_todos, edit_todos)
   validation.ts     — Type guards and helpers

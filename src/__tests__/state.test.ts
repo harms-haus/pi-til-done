@@ -7,6 +7,7 @@ import {
   resetAutoContinue,
   resetState,
   appendTodos,
+  insertTodos,
   reconstructState,
   updateUI,
 } from "../state";
@@ -158,6 +159,91 @@ describe("state management", () => {
         { text: "new 2", status: "in_progress" },
         { text: "new 3", status: "completed" },
       ]);
+    });
+  });
+
+  describe("insertTodos", () => {
+    it("inserts at beginning (index 0)", () => {
+      setTodos([
+        { text: "old 1", status: "not_started" },
+        { text: "old 2", status: "not_started" },
+      ]);
+      insertTodos(0, [{ text: "new", status: "not_started" }]);
+      expect(getTodos()).toEqual([
+        { text: "new", status: "not_started" },
+        { text: "old 1", status: "not_started" },
+        { text: "old 2", status: "not_started" },
+      ]);
+    });
+
+    it("inserts at middle (index 1)", () => {
+      setTodos([
+        { text: "old 0", status: "not_started" },
+        { text: "old 1", status: "not_started" },
+        { text: "old 2", status: "not_started" },
+      ]);
+      insertTodos(1, [{ text: "new", status: "not_started" }]);
+      expect(getTodos()).toEqual([
+        { text: "old 0", status: "not_started" },
+        { text: "new", status: "not_started" },
+        { text: "old 1", status: "not_started" },
+        { text: "old 2", status: "not_started" },
+      ]);
+    });
+
+    it("inserts at end (index = length)", () => {
+      setTodos([
+        { text: "old 1", status: "not_started" },
+        { text: "old 2", status: "not_started" },
+      ]);
+      insertTodos(2, [{ text: "new", status: "not_started" }]);
+      expect(getTodos()).toEqual([
+        { text: "old 1", status: "not_started" },
+        { text: "old 2", status: "not_started" },
+        { text: "new", status: "not_started" },
+      ]);
+    });
+
+    it("inserts multiple items", () => {
+      setTodos([{ text: "existing", status: "not_started" }]);
+      insertTodos(1, [
+        { text: "new 1", status: "not_started" },
+        { text: "new 2", status: "in_progress" },
+        { text: "new 3", status: "completed" },
+      ]);
+      expect(getTodos()).toEqual([
+        { text: "existing", status: "not_started" },
+        { text: "new 1", status: "not_started" },
+        { text: "new 2", status: "in_progress" },
+        { text: "new 3", status: "completed" },
+      ]);
+    });
+
+    it("resets autoContinueCount", () => {
+      incrementAutoContinue();
+      incrementAutoContinue();
+      expect(incrementAutoContinue()).toBe(3);
+      insertTodos(0, [{ text: "inserted", status: "not_started" }]);
+      expect(incrementAutoContinue()).toBe(1); // Counter was reset to 0
+    });
+
+    it("mutation isolation", () => {
+      setTodos([{ text: "existing", status: "not_started" }]);
+      const input: TodoItem[] = [{ text: "task", status: "not_started" }];
+      insertTodos(0, input);
+      // Mutate the input array after inserting
+      input.push({ text: "extra", status: "not_started" });
+      // State should be unaffected
+      expect(getTodos()).toEqual([
+        { text: "task", status: "not_started" },
+        { text: "existing", status: "not_started" },
+      ]);
+    });
+
+    it("works on empty list at index 0", () => {
+      expect(getTodos()).toEqual([]);
+      insertTodos(0, [{ text: "first", status: "not_started" }]);
+      expect(getTodos()).toEqual([{ text: "first", status: "not_started" }]);
     });
   });
 });

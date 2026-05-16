@@ -582,4 +582,68 @@ describe("agent_end handler", () => {
     expect(sendUserMessage).toHaveBeenCalled();
     // No crash — test completes without unhandled exception
   });
+
+  it("falls back to deliverAs followUp when sendUserMessage throws during countdown", async () => {
+    const { api, on, sendUserMessage } = createMockAPI();
+    const ctx = createMockContext();
+    // First call (no options) throws, second call (with options) succeeds
+    sendUserMessage.mockImplementationOnce(() => {
+      throw new Error("Agent busy");
+    });
+    setTodos([{ text: "task 1", status: "not_started" }]);
+
+    registerEventHandlers(api);
+
+    const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, ctx);
+    vi.advanceTimersByTime(3000);
+
+    // Called twice: once without options (throws), once with followUp option (succeeds)
+    expect(sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(sendUserMessage.mock.calls[0]).toEqual([expect.any(String)]);
+    expect(sendUserMessage.mock.calls[1]).toEqual([expect.any(String), { deliverAs: "followUp" }]);
+  });
+
+  it("falls back to deliverAs followUp when sendUserMessage throws without UI", async () => {
+    const { api, on, sendUserMessage } = createMockAPI();
+    const ctx = createMockContext();
+    ctx.hasUI = false;
+    // First call (no options) throws, second call (with options) succeeds
+    sendUserMessage.mockImplementationOnce(() => {
+      throw new Error("Agent busy");
+    });
+    setTodos([{ text: "task 1", status: "not_started" }]);
+
+    registerEventHandlers(api);
+
+    const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, ctx);
+    vi.advanceTimersByTime(3000);
+
+    // Same fallback behavior as the UI branch
+    expect(sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(sendUserMessage.mock.calls[0]).toEqual([expect.any(String)]);
+    expect(sendUserMessage.mock.calls[1]).toEqual([expect.any(String), { deliverAs: "followUp" }]);
+  });
+
+  it("skips auto-continue silently when both sendUserMessage calls fail", async () => {
+    const { api, on, sendUserMessage } = createMockAPI();
+    const ctx = createMockContext();
+    sendUserMessage.mockImplementation(() => {
+      throw new Error("Agent unavailable");
+    });
+    setTodos([{ text: "task 1", status: "not_started" }]);
+
+    registerEventHandlers(api);
+
+    const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1];
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, ctx);
+    vi.advanceTimersByTime(3000);
+
+    // Both calls attempted — first without options, then with followUp
+    expect(sendUserMessage).toHaveBeenCalledTimes(2);
+    // Widget was cleared (no stale countdown)
+    expect(ctx.ui.setWidget).toHaveBeenCalledWith("til-done-countdown", undefined);
+    // No crash — test completes without unhandled exception
+  });
 });

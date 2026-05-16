@@ -9,14 +9,21 @@ import { getTodos, setTodos, reconstructState, updateUI, incrementAutoContinue }
 // fires while a previous countdown is still active (race condition guard).
 let activeCountdown: ReturnType<typeof setInterval> | null = null;
 
-/** Clear any active countdown interval and remove the countdown widget. */
+// Module-level timeout handle — tracks setTimeout in no-UI fallback path
+let activeTimeout: ReturnType<typeof setTimeout> | null = null;
+
+/** Clear any active countdown interval, timeout, and remove the countdown widget. */
 function clearCountdown(ctx: ExtensionContext): void {
   if (activeCountdown !== null) {
     clearInterval(activeCountdown);
     activeCountdown = null;
-    if (ctx.hasUI) {
-      ctx.ui.setWidget("til-done-countdown", undefined);
-    }
+  }
+  if (activeTimeout !== null) {
+    clearTimeout(activeTimeout);
+    activeTimeout = null;
+  }
+  if (ctx.hasUI) {
+    ctx.ui.setWidget("til-done-countdown", undefined);
   }
 }
 
@@ -89,6 +96,19 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
       }
     }
     return false;
+  }
+
+  /** Send auto-continue prompt, falling back to followUp delivery if agent is busy. */
+  function trySendAutoContinue(pi: ExtensionAPI, prompt: string): void {
+    try {
+      pi.sendUserMessage(prompt);
+    } catch {
+      try {
+        pi.sendUserMessage(prompt, { deliverAs: "followUp" });
+      } catch {
+        // Agent truly unavailable (user typing, etc.) — skip auto-continue
+      }
+    }
   }
 
   pi.on("agent_end", async (event, ctx) => {
@@ -174,11 +194,7 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
             );
           } else {
             clearCountdown(ctx);
-            try {
-              pi.sendUserMessage(prompt);
-            } catch {
-              // User already started typing — skip auto-continue
-            }
+            trySendAutoContinue(pi, prompt);
           }
         } catch {
           clearCountdown(ctx);
@@ -194,12 +210,9 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
       );
     } else {
       // Fallback for RPC/print mode — no UI available
-      setTimeout(() => {
-        try {
-          pi.sendUserMessage(prompt);
-        } catch {
-          // User already started typing — skip auto-continue
-        }
+      activeTimeout = setTimeout(() => {
+        activeTimeout = null;
+        trySendAutoContinue(pi, prompt);
       }, 3000);
     }
   });

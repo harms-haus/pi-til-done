@@ -105,14 +105,14 @@ export function updateUI(ctx: ExtensionContext, todoList: readonly TodoItem[]): 
   }
 
   const total = todoList.length;
-  let completed = 0;
+  let done = 0;
   const activeLines: string[] = [];
 
   for (let i = 0; i < total; i++) {
     const item = todoList[i];
     if (!item) continue;
-    if (item.status === "completed") {
-      completed++;
+    if (item.status === "completed" || item.status === "abandoned") {
+      done++;
     }
     if (item.status === "in_progress") {
       activeLines.push(`[${i}] ${item.text}`);
@@ -120,12 +120,12 @@ export function updateUI(ctx: ExtensionContext, todoList: readonly TodoItem[]): 
   }
 
   // All completed — show done state
-  if (completed === total) {
+  if (done === total) {
     ctx.ui.setStatus("til-done", `✓ Done (${total} items)`);
     ctx.ui.setStatus("til-done-active", undefined);
     return;
   }
 
-  ctx.ui.setStatus("til-done", `📋 ${completed}/${total}`);
+  ctx.ui.setStatus("til-done", `📋 ${done}/${total}`);
   ctx.ui.setStatus("til-done-active", activeLines.length > 0 ? activeLines.join("\n") : undefined);
 }

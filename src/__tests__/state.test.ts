@@ -508,7 +508,7 @@ describe("updateUI", () => {
     expect(setStatus).toHaveBeenCalledWith("til-done-active", "[1] task 2\n[4] task 5");
   });
 
-  it("shows progress counter when all items are abandoned", () => {
+  it("shows done state when all items are abandoned", () => {
     const setStatus = vi.fn();
     const ctx = createMockContext();
     ctx.ui.setStatus = setStatus;
@@ -517,11 +517,11 @@ describe("updateUI", () => {
       { text: "task 2", status: "abandoned" },
     ];
     updateUI(ctx, todos);
-    expect(setStatus).toHaveBeenCalledWith("til-done", "📋 0/2");
+    expect(setStatus).toHaveBeenCalledWith("til-done", "✓ Done (2 items)");
     expect(setStatus).toHaveBeenCalledWith("til-done-active", undefined);
   });
 
-  it("shows progress counter for mixed completed+abandoned with no incomplete items", () => {
+  it("shows done state for mixed completed+abandoned with no incomplete items", () => {
     const setStatus = vi.fn();
     const ctx = createMockContext();
     ctx.ui.setStatus = setStatus;
@@ -531,7 +531,7 @@ describe("updateUI", () => {
       { text: "task 3", status: "completed" },
     ];
     updateUI(ctx, todos);
-    expect(setStatus).toHaveBeenCalledWith("til-done", "📋 2/3");
+    expect(setStatus).toHaveBeenCalledWith("til-done", "✓ Done (3 items)");
     expect(setStatus).toHaveBeenCalledWith("til-done-active", undefined);
   });
 });

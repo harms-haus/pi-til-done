@@ -19,7 +19,7 @@ describe("default export (extension factory)", () => {
     expect(toolNames).toContain("edit_todos");
   });
 
-  it("registers 2 message renderers", () => {
+  it("registers 3 message renderers", () => {
     const registerMessageRenderer = vi.fn();
     const api = {
       registerTool: vi.fn(),

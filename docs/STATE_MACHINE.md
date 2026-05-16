@@ -157,7 +157,6 @@ When the counter exceeds this threshold, the extension sends a `til-done-complet
 | `appendTodos()` | **Reset to 0** | `state.ts` |
 | `insertTodos()` | **Reset to 0** | `state.ts` |
 | `agent_end` handler | **Incremented by 1** via `incrementAutoContinue()` | `events.ts` |
-| `resetAutoContinue()` | **Reset to 0** (internal utility) | `state.ts` |
 | `resetState()` | **Reset to 0** (testing only) | `state.ts` |
 
 ### When the Counter Does NOT Change

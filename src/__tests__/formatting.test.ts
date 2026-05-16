@@ -254,7 +254,7 @@ describe("renderToolResult", () => {
 
   it("returns Text with content[0].text when no details", () => {
     const result = { content: [{ type: "text", text: "some text" }] };
-    const rendered = renderToolResult(result, { expanded: false, isPartial: false }, mockTheme);
+    const rendered = renderToolResult(result, { expanded: false, isPartial: false }, mockTheme, {});
 
     const renderedLines = rendered.render(100);
     expect(renderedLines[0]).toMatch(/^some text\s*$/);
@@ -270,7 +270,7 @@ describe("renderToolResult", () => {
       },
     };
 
-    const rendered = renderToolResult(result, { expanded: false, isPartial: false }, mockTheme);
+    const rendered = renderToolResult(result, { expanded: false, isPartial: false }, mockTheme, {});
 
     expect(mockTheme.fg).toHaveBeenCalledWith("error", "Error: something went wrong");
     const renderedLines = rendered.render(100);
@@ -291,7 +291,7 @@ describe("renderToolResult", () => {
       },
     };
 
-    const rendered = renderToolResult(result, { expanded: false, isPartial: false }, mockTheme);
+    const rendered = renderToolResult(result, { expanded: false, isPartial: false }, mockTheme, {});
 
     expect(mockTheme.fg).toHaveBeenCalledWith("dim", "–");
     expect(mockTheme.fg).toHaveBeenCalledWith("accent", "[0]");
@@ -315,7 +315,7 @@ describe("renderToolResult", () => {
       },
     };
 
-    const rendered = renderToolResult(result, { expanded: false, isPartial: false }, mockTheme);
+    const rendered = renderToolResult(result, { expanded: false, isPartial: false }, mockTheme, {});
 
     expect(mockTheme.fg).toHaveBeenCalledWith("dim", "No todos");
     const renderedLines = rendered.render(100);
@@ -324,7 +324,7 @@ describe("renderToolResult", () => {
 
   it("handles result with empty content array", () => {
     const result = { content: [] };
-    const rendered = renderToolResult(result, { expanded: false, isPartial: false }, mockTheme);
+    const rendered = renderToolResult(result, { expanded: false, isPartial: false }, mockTheme, {});
     const renderedLines = rendered.render(100);
     expect(renderedLines).toEqual([]);
   });
@@ -336,8 +336,13 @@ describe("renderToolResult", () => {
       details: { action: "write", todos },
     };
 
-    const expanded = renderToolResult(result, { expanded: true, isPartial: false }, mockTheme);
-    const notExpanded = renderToolResult(result, { expanded: false, isPartial: false }, mockTheme);
+    const expanded = renderToolResult(result, { expanded: true, isPartial: false }, mockTheme, {});
+    const notExpanded = renderToolResult(
+      result,
+      { expanded: false, isPartial: false },
+      mockTheme,
+      {},
+    );
 
     const expandedLines = expanded.render(100);
     const notExpandedLines = notExpanded.render(100);

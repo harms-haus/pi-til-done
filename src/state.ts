@@ -24,7 +24,9 @@ export function setTodos(newTodos: TodoItem[]): void {
 /** Updates the status of specific todo items by index. Resets auto-continue counter. */
 export function updateTodoStatus(indices: readonly number[], newStatus: TodoStatus): void {
   for (const idx of indices) {
-    todos[idx] = { ...todos[idx], status: newStatus };
+    const item = todos[idx];
+    if (!item) continue;
+    todos[idx] = { ...item, status: newStatus };
   }
   autoContinueCount = 0;
 }
@@ -37,22 +39,13 @@ export function appendTodos(newItems: readonly TodoItem[]): void {
 
 /** Inserts new todo items at a specific index. Resets auto-continue counter. */
 export function insertTodos(atIndex: number, newItems: readonly TodoItem[]): void {
-  todos = [
-    ...todos.slice(0, atIndex),
-    ...newItems,
-    ...todos.slice(atIndex),
-  ];
+  todos = [...todos.slice(0, atIndex), ...newItems, ...todos.slice(atIndex)];
   autoContinueCount = 0;
 }
 
 /** Increments and returns the auto-continue counter */
 export function incrementAutoContinue(): number {
   return ++autoContinueCount;
-}
-
-/** Resets the auto-continue counter (called when todos are set or edited) */
-export function resetAutoContinue(): void {
-  autoContinueCount = 0;
 }
 
 /** Resets all mutable state. For testing only. */
@@ -62,6 +55,15 @@ export function resetState(): void {
 }
 
 // ── State Reconstruction ──
+
+function hasTodoDetails(d: unknown): d is { todos: unknown[] } {
+  return (
+    typeof d === "object" &&
+    d !== null &&
+    "todos" in d &&
+    Array.isArray((d as { todos: unknown }).todos)
+  );
+}
 
 /**
  * Reconstructs todo state from session history.
@@ -73,14 +75,16 @@ export function reconstructState(ctx: ExtensionContext): TodoItem[] {
 
   for (let i = branch.length - 1; i >= 0; i--) {
     const entry = branch[i];
+    if (!entry) continue;
     if (entry.type !== "message") continue;
     const msg = entry.message;
     if (msg.role !== "toolResult") continue;
     if (!TOOL_NAMES.has(msg.toolName)) continue;
 
-    const details = msg.details as { todos?: unknown[] } | undefined;
-    if (details?.todos && Array.isArray(details.todos) && details.todos.length > 0) {
-      const valid = details.todos.filter(isValidTodoItem);
+    if (!hasTodoDetails(msg.details)) continue;
+    const todos = msg.details.todos;
+    if (todos.length > 0) {
+      const valid = todos.filter(isValidTodoItem);
       return valid.map((t) => ({ text: t.text, status: t.status }));
     }
   }
@@ -106,6 +110,7 @@ export function updateUI(ctx: ExtensionContext, todoList: readonly TodoItem[]): 
 
   for (let i = 0; i < total; i++) {
     const item = todoList[i];
+    if (!item) continue;
     if (item.status === "completed") {
       completed++;
     }

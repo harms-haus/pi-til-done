@@ -38,10 +38,10 @@ describe("write_todos tool", () => {
       ctx,
     );
 
-    expect(result.content[0].type).toBe("text");
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("task 1");
-      expect(result.content[0].text).toContain("Wrote 1 todo item(s)");
+    expect(result.content[0]!.type).toBe("text");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("task 1");
+      expect(result.content[0]!.text).toContain("Wrote 1 todo item(s)");
     }
   });
 
@@ -61,9 +61,9 @@ describe("write_todos tool", () => {
     expect(resultTodos).toEqual([{ text: "task 1", status: "not_started" }]);
     // Verify it's a clone by modifying original and checking it doesn't affect result
     if (resultTodos) {
-      resultTodos[0].text = "modified";
+      resultTodos[0]!.text = "modified";
       const currentTodos = getTodos();
-      expect(currentTodos[0].text).toBe("task 1");
+      expect(currentTodos[0]!.text).toBe("task 1");
     }
   });
 
@@ -82,9 +82,9 @@ describe("write_todos tool", () => {
     expect(result.details?.action).toBe("write");
     expect(result.details?.error).toBe("text too long");
     expect(result.details?.todos).toEqual([]);
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("Error");
-      expect(result.content[0].text).toContain("exceeds maximum text length");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("Error");
+      expect(result.content[0]!.text).toContain("exceeds maximum text length");
     }
   });
 
@@ -100,8 +100,8 @@ describe("write_todos tool", () => {
       ctx,
     );
 
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("index 1");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("index 1");
     }
   });
 
@@ -120,6 +120,24 @@ describe("write_todos tool", () => {
     );
 
     expect(setStatus).toHaveBeenCalled();
+  });
+
+  it("allows replacing with empty array (clears all todos)", async () => {
+    const tool = createWriteTodosTool();
+    const ctx = createMockContext();
+    setTodos([{ text: "existing", status: "not_started" as const }]);
+    const result = await tool.execute(
+      "call-id",
+      { mode: "replace", todos: [] },
+      new AbortController().signal,
+      () => {},
+      ctx,
+    );
+    expect(getTodos()).toEqual([]);
+    expect(result.details?.todos).toEqual([]);
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("Wrote 0 todo item(s)");
+    }
   });
 });
 
@@ -177,9 +195,9 @@ describe("write_todos append mode", () => {
       ctx,
     );
 
-    expect(result.content[0].type).toBe("text");
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("Appended 2 item(s)");
+    expect(result.content[0]!.type).toBe("text");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("Appended 2 item(s)");
     }
   });
 
@@ -200,8 +218,8 @@ describe("write_todos append mode", () => {
     const resultTodos = result.details?.todos as Array<{ text: string; status: string }>;
     expect(resultTodos).toHaveLength(2);
     // Verify clone isolation
-    resultTodos[0].text = "modified";
-    expect(getTodos()[0].text).toBe("existing");
+    resultTodos[0]!.text = "modified";
+    expect(getTodos()[0]!.text).toBe("existing");
   });
 
   it("rejects oversized text", async () => {
@@ -295,8 +313,8 @@ describe("write_todos append mode", () => {
     );
 
     const todos = getTodos();
-    expect(todos[0].status).toBe("in_progress");
-    expect(todos[0].text).toBe("in-progress task");
+    expect(todos[0]!.status).toBe("in_progress");
+    expect(todos[0]!.text).toBe("in-progress task");
   });
 });
 
@@ -380,7 +398,11 @@ describe("write_todos insert mode", () => {
 
     await tool.execute(
       "call-id",
-      { mode: "insert", index: 1, todos: [{ text: "new a" }, { text: "new b" }, { text: "new c" }] },
+      {
+        mode: "insert",
+        index: 1,
+        todos: [{ text: "new a" }, { text: "new b" }, { text: "new c" }],
+      },
       new AbortController().signal,
       () => {},
       ctx,
@@ -410,9 +432,9 @@ describe("write_todos insert mode", () => {
       ctx,
     );
 
-    expect(result.content[0].type).toBe("text");
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("Inserted 2 item(s) at index 0");
+    expect(result.content[0]!.type).toBe("text");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("Inserted 2 item(s) at index 0");
     }
   });
 
@@ -433,8 +455,8 @@ describe("write_todos insert mode", () => {
     const resultTodos = result.details?.todos as Array<{ text: string; status: string }>;
     expect(resultTodos).toHaveLength(2);
     // Verify clone isolation
-    resultTodos[0].text = "modified";
-    expect(getTodos()[0].text).toBe("new");
+    resultTodos[0]!.text = "modified";
+    expect(getTodos()[0]!.text).toBe("new");
   });
 
   it("requires index parameter", async () => {
@@ -465,8 +487,8 @@ describe("write_todos insert mode", () => {
     );
 
     expect(result.details?.error).toContain("out of range");
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("index -1 out of range");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("index -1 out of range");
     }
   });
 
@@ -487,8 +509,8 @@ describe("write_todos insert mode", () => {
     );
 
     expect(result.details?.error).toContain("out of range");
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("index 3 out of range");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("index 3 out of range");
     }
   });
 
@@ -548,8 +570,8 @@ describe("write_todos insert mode", () => {
     );
 
     const todos = getTodos();
-    expect(todos[0].status).toBe("in_progress");
-    expect(todos[2].status).toBe("completed");
+    expect(todos[0]!.status).toBe("in_progress");
+    expect(todos[2]!.status).toBe("completed");
   });
 
   it("atomic: no mutation when index invalid", async () => {
@@ -602,10 +624,10 @@ describe("list_todos tool", () => {
 
     const result = await tool.execute("call-id", {}, new AbortController().signal, () => {}, ctx);
 
-    expect(result.content[0].type).toBe("text");
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("task 1");
-      expect(result.content[0].text).toContain("task 2");
+    expect(result.content[0]!.type).toBe("text");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("task 1");
+      expect(result.content[0]!.text).toContain("task 2");
     }
   });
 
@@ -635,8 +657,8 @@ describe("list_todos tool", () => {
 
     const result = await tool.execute("call-id", {}, new AbortController().signal, () => {}, ctx);
 
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toBe("No todos");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toBe("No todos");
     }
   });
 });
@@ -663,9 +685,9 @@ describe("edit_todos tool", () => {
       ctx,
     );
 
-    expect(getTodos()[0].status).toBe("in_progress");
-    expect(getTodos()[1].status).toBe("not_started");
-    expect(getTodos()[2].status).toBe("in_progress");
+    expect(getTodos()[0]!.status).toBe("in_progress");
+    expect(getTodos()[1]!.status).toBe("not_started");
+    expect(getTodos()[2]!.status).toBe("in_progress");
     expect(result.details?.action).toBe("edit");
   });
 
@@ -685,8 +707,8 @@ describe("edit_todos tool", () => {
       ctx,
     );
 
-    expect(getTodos()[0].status).toBe("completed");
-    expect(getTodos()[1].status).toBe("in_progress");
+    expect(getTodos()[0]!.status).toBe("completed");
+    expect(getTodos()[1]!.status).toBe("in_progress");
   });
 
   it("applies 'abandon' action to specified indices", async () => {
@@ -705,8 +727,8 @@ describe("edit_todos tool", () => {
       ctx,
     );
 
-    expect(getTodos()[0].status).toBe("in_progress");
-    expect(getTodos()[1].status).toBe("abandoned");
+    expect(getTodos()[0]!.status).toBe("in_progress");
+    expect(getTodos()[1]!.status).toBe("abandoned");
   });
 
   it("returns error when no todos exist", async () => {
@@ -721,8 +743,8 @@ describe("edit_todos tool", () => {
       ctx,
     );
 
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("Error: no todos exist");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("Error: no todos exist");
     }
     expect(result.details?.error).toBe("no todos exist");
   });
@@ -740,9 +762,9 @@ describe("edit_todos tool", () => {
       ctx,
     );
 
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("Error");
-      expect(result.content[0].text).toContain("indices [1, 2] out of range");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("Error");
+      expect(result.content[0]!.text).toContain("indices [1, 2] out of range");
     }
     expect(result.details?.error).toContain("indices [1, 2] out of range");
   });
@@ -760,9 +782,9 @@ describe("edit_todos tool", () => {
       ctx,
     );
 
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("Error");
-      expect(result.content[0].text).toContain("indices [-1] out of range");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("Error");
+      expect(result.content[0]!.text).toContain("indices [-1] out of range");
     }
   });
 
@@ -779,12 +801,12 @@ describe("edit_todos tool", () => {
       ctx,
     );
 
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("Error");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("Error");
     }
     expect(result.details.error).toBeDefined();
     // Verify no mutation occurred
-    expect(getTodos()[0].status).toBe("not_started");
+    expect(getTodos()[0]!.status).toBe("not_started");
   });
 
   it("atomic: no mutation when any index is invalid", async () => {
@@ -820,10 +842,10 @@ describe("edit_todos tool", () => {
       ctx,
     );
 
-    if (result.content[0].type === "text") {
-      expect(result.content[0].text).toContain("Started");
-      expect(result.content[0].text).toContain("[0]");
-      expect(result.content[0].text).toContain("task 1");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("Started");
+      expect(result.content[0]!.text).toContain("[0]");
+      expect(result.content[0]!.text).toContain("task 1");
     }
   });
 
@@ -845,8 +867,8 @@ describe("edit_todos tool", () => {
     expect(resultTodos).toEqual([{ text: "task 1", status: "in_progress" }]);
     // Verify it's a clone
     if (resultTodos) {
-      resultTodos[0].text = "modified";
-      expect(getTodos()[0].text).toBe("task 1");
+      resultTodos[0]!.text = "modified";
+      expect(getTodos()[0]!.text).toBe("task 1");
     }
   });
 
@@ -868,7 +890,20 @@ describe("edit_todos tool", () => {
     expect(setStatus).toHaveBeenCalled();
   });
 
-
+  it("returns error when indices array is empty", async () => {
+    const tool = createEditTodosTool();
+    const ctx = createMockContext();
+    setTodos([{ text: "task 1", status: "not_started" as const }]);
+    const result = await tool.execute(
+      "call-id",
+      { action: "start", indices: [] },
+      new AbortController().signal,
+      () => {},
+      ctx,
+    );
+    expect(result.details?.error).toBe("indices required");
+    expect(getTodos()[0]!.status).toBe("not_started");
+  });
 });
 
 describe("renderCall", () => {
@@ -941,8 +976,6 @@ describe("renderCall", () => {
       expect(result.toString()).toContain("@2");
     }
   });
-
-
 });
 
 describe("renderResult (shared via renderToolResult)", () => {
@@ -957,7 +990,7 @@ describe("renderResult (shared via renderToolResult)", () => {
         },
         { expanded: false, isPartial: false },
         mockTheme,
-        { expanded: false, isPartial: false } as any,
+        {} as any,
       );
 
       const text = result.toString();
@@ -980,7 +1013,7 @@ describe("renderResult (shared via renderToolResult)", () => {
         },
         { expanded: false, isPartial: false },
         mockTheme,
-        { expanded: false, isPartial: false } as any,
+        {} as any,
       );
 
       expect(result.toString()).toContain("task 1");
@@ -1005,7 +1038,7 @@ describe("renderResult (shared via renderToolResult)", () => {
         },
         { expanded: false, isPartial: false },
         mockTheme,
-        { expanded: false, isPartial: false } as any,
+        {} as any,
       );
 
       expect(result.toString()).toBe("Some raw content");

@@ -21,7 +21,13 @@ export function formatRemainingList(
   todos: readonly TodoItem[],
   indices: readonly number[],
 ): string {
-  return indices.map((i) => `${getPlainIcon(todos[i].status)} [${i}] ${todos[i].text}`).join("\n");
+  return indices
+    .map((i) => {
+      const todo = todos[i];
+      return todo ? `${getPlainIcon(todo.status)} [${i}] ${todo.text}` : null;
+    })
+    .filter((line): line is string => line !== null)
+    .join("\n");
 }
 
 // ── Themed Formatting (for TUI rendering) ──
@@ -70,6 +76,7 @@ export function renderToolResult(
   result: { content: Array<{ type: string; text?: string }>; details?: unknown },
   _options: { expanded: boolean; isPartial: boolean },
   theme: Theme,
+  _context: unknown,
 ): Text {
   const details = result.details as TodoDetails | undefined;
   if (!details) {

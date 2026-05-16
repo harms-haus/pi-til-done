@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { MAX_AUTO_CONTINUE } from "./types";
 import { isIncomplete } from "./validation";
@@ -9,20 +9,31 @@ import { getTodos, setTodos, reconstructState, updateUI, incrementAutoContinue }
 // fires while a previous countdown is still active (race condition guard).
 let activeCountdown: ReturnType<typeof setInterval> | null = null;
 
+/** Clear any active countdown interval and remove the countdown widget. */
+function clearCountdown(ctx: ExtensionContext): void {
+  if (activeCountdown !== null) {
+    clearInterval(activeCountdown);
+    activeCountdown = null;
+    if (ctx.hasUI) {
+      ctx.ui.setWidget("til-done-countdown", undefined);
+    }
+  }
+}
+
 // ── Message Renderers ──
 
 export function registerMessageRenderers(pi: ExtensionAPI): void {
   pi.registerMessageRenderer("til-done-context", (message, _opts, theme) => {
-    return new Text(theme.fg("accent", "📋 ") + theme.fg("dim", message.content as string), 0, 0);
+    return new Text(theme.fg("accent", "📋 ") + theme.fg("dim", String(message.content)), 0, 0);
   });
 
   pi.registerMessageRenderer("til-done-complete", (message, _opts, theme) => {
-    return new Text(theme.fg("success", "✓ ") + theme.fg("text", message.content as string), 0, 0);
+    return new Text(theme.fg("success", "✓ ") + theme.fg("text", String(message.content)), 0, 0);
   });
 
   // Countdown shown during the grace period before auto-continue
   pi.registerMessageRenderer("til-done-countdown", (message, _opts, theme) => {
-    return new Text(theme.fg("accent", "⏳ ") + theme.fg("dim", message.content as string), 0, 0);
+    return new Text(theme.fg("accent", "⏳ ") + theme.fg("dim", String(message.content)), 0, 0);
   });
 }
 
@@ -32,22 +43,14 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
   // ── State Reconstruction Events ──
 
   pi.on("session_start", async (_, ctx) => {
-    if (activeCountdown !== null) {
-      clearInterval(activeCountdown);
-      activeCountdown = null;
-      if (ctx.hasUI) { ctx.ui.setWidget("til-done-countdown", undefined); }
-    }
+    clearCountdown(ctx);
     const todos = reconstructState(ctx);
     setTodos(todos);
     updateUI(ctx, todos);
   });
 
   pi.on("session_tree", async (_, ctx) => {
-    if (activeCountdown !== null) {
-      clearInterval(activeCountdown);
-      activeCountdown = null;
-      if (ctx.hasUI) { ctx.ui.setWidget("til-done-countdown", undefined); }
-    }
+    clearCountdown(ctx);
     const todos = reconstructState(ctx);
     setTodos(todos);
     updateUI(ctx, todos);
@@ -79,8 +82,10 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
    */
   function wasAborted(messages: { role: string; stopReason?: string }[]): boolean {
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "assistant") {
-        return messages[i].stopReason === "aborted";
+      const msg = messages[i];
+      if (!msg) continue;
+      if (msg.role === "assistant") {
+        return msg.stopReason === "aborted";
       }
     }
     return false;
@@ -114,12 +119,14 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
     let firstNotStartedIdx = -1;
 
     for (let i = 0; i < todos.length; i++) {
-      if (!isIncomplete(todos[i].status)) continue;
+      const todo = todos[i];
+      if (!todo) continue;
+      if (!isIncomplete(todo.status)) continue;
       incompleteIndices.push(i);
-      if (todos[i].status === "in_progress" && nextInProgressIdx === -1) {
+      if (todo.status === "in_progress" && nextInProgressIdx === -1) {
         nextInProgressIdx = i;
       }
-      if (todos[i].status === "not_started" && firstNotStartedIdx === -1) {
+      if (todo.status === "not_started" && firstNotStartedIdx === -1) {
         firstNotStartedIdx = i;
       }
     }
@@ -133,7 +140,9 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
 
     // Select next item: prefer in-progress, then first not_started
     const nextIdx = nextInProgressIdx !== -1 ? nextInProgressIdx : firstNotStartedIdx;
+    if (nextIdx === -1) return;
     const nextItem = todos[nextIdx];
+    if (!nextItem) return;
     const nextAction = nextItem.status === "in_progress" ? "complete" : "start";
 
     // Structured prompt — no interpolation of todo.text into instructions
@@ -149,20 +158,22 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
     // Show live countdown and auto-continue after 3 seconds
     if (ctx.hasUI) {
       // Clear any existing countdown to prevent stacked intervals
-      if (activeCountdown !== null) { clearInterval(activeCountdown); }
+      if (activeCountdown !== null) {
+        clearInterval(activeCountdown);
+      }
 
       let remaining = 3;
       const interval = setInterval(() => {
         try {
           remaining--;
           if (remaining > 0) {
-            ctx.ui.setWidget("til-done-countdown", [
-              `⏳ Auto-continuing in ${remaining}s... (type anything to interrupt)`,
-            ], { placement: "aboveEditor" });
+            ctx.ui.setWidget(
+              "til-done-countdown",
+              [`⏳ Auto-continuing in ${remaining}s... (type anything to interrupt)`],
+              { placement: "aboveEditor" },
+            );
           } else {
-            clearInterval(interval);
-            activeCountdown = null;
-            ctx.ui.setWidget("til-done-countdown", undefined);
+            clearCountdown(ctx);
             try {
               pi.sendUserMessage(prompt);
             } catch {
@@ -170,17 +181,17 @@ export function registerEventHandlers(pi: ExtensionAPI): void {
             }
           }
         } catch {
-          clearInterval(interval);
-          activeCountdown = null;
-          ctx.ui.setWidget("til-done-countdown", undefined);
+          clearCountdown(ctx);
         }
       }, 1000);
       activeCountdown = interval;
 
       // Show initial widget immediately
-      ctx.ui.setWidget("til-done-countdown", [
-        "⏳ Auto-continuing in 3s... (type anything to interrupt)",
-      ], { placement: "aboveEditor" });
+      ctx.ui.setWidget(
+        "til-done-countdown",
+        ["⏳ Auto-continuing in 3s... (type anything to interrupt)"],
+        { placement: "aboveEditor" },
+      );
     } else {
       // Fallback for RPC/print mode — no UI available
       setTimeout(() => {

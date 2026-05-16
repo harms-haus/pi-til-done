@@ -68,7 +68,6 @@ This is a **singleton** — one shared instance per loaded module. There is no p
 | `appendTodos(newItems)` | Spreads `newItems` onto existing list; **resets** to `0` |
 | `insertTodos(atIndex, newItems)` | Inserts `newItems` at `atIndex`; **resets** to `0` |
 | `incrementAutoContinue()` | Increments and returns new value |
-| `resetAutoContinue()` | Resets to `0` |
 | `resetState()` | Clears both `todos` and `autoContinueCount` (testing only) |
 
 ### Auto-Continue Counter Reset Rules

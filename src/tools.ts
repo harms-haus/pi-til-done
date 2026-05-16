@@ -1,24 +1,26 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import type { TodoItem, TodoStatus, TodoDetails } from "./types";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { TodoItem, TodoDetails } from "./types";
 import {
   ACTION_TO_STATUS,
   ACTION_LABELS,
   INITIAL_STATUS,
+  MAX_INDICES,
   MAX_TODO_TEXT_LENGTH,
   MAX_TODOS,
 } from "./types";
 import { cloneTodos, findOversizedItem } from "./validation";
 import { formatTodoListText, renderToolResult } from "./formatting";
 import { getTodos, setTodos, appendTodos, insertTodos, updateTodoStatus, updateUI } from "./state";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 // ── Schemas ──
 
 const WriteTodosParams = Type.Object({
   mode: StringEnum(["replace", "append", "insert"] as const, {
-    description: "Mode: 'replace' clears and replaces the entire list, 'append' adds to the end, 'insert' inserts at a specific index",
+    description:
+      "Mode: 'replace' clears and replaces the entire list, 'append' adds to the end, 'insert' inserts at a specific index",
   }),
   index: Type.Optional(
     Type.Integer({
@@ -42,9 +44,26 @@ const EditTodosParams = Type.Object({
   indices: Type.Array(Type.Integer(), {
     description: "0-based indices to apply the action to",
     minItems: 1,
-    maxItems: 50,
+    maxItems: MAX_INDICES,
   }),
 });
+
+// ── Helpers ──
+
+function makeErrorResult(
+  action: "write" | "edit",
+  errorText: string,
+  errorCode: string,
+): { content: Array<{ type: "text"; text: string }>; details: TodoDetails } {
+  return {
+    content: [{ type: "text" as const, text: errorText }],
+    details: { action, todos: [], error: errorCode },
+  };
+}
+
+function toNewItems(items: readonly { text: string }[]): TodoItem[] {
+  return items.map((t) => ({ text: t.text, status: INITIAL_STATUS }));
+}
 
 // ── Tool Factories ──
 
@@ -55,7 +74,8 @@ export function createWriteTodosTool(): ToolDefinition<typeof WriteTodosParams, 
     description:
       "Manage a todo list with modes: 'replace' clears and replaces the entire list, 'append' adds items to the end without changing existing item statuses, 'insert' inserts items at a specific index without changing existing item statuses. Each new item starts as 'not_started'.",
     parameters: WriteTodosParams,
-    promptSnippet: "Manage a todo list: write (replace/append/insert), list, edit (start/complete/abandon by indices)",
+    promptSnippet:
+      "Manage a todo list: write (replace/append/insert), list, edit (start/complete/abandon by indices)",
     promptGuidelines: [
       "Use write_todos with mode 'replace' to create or replace the full todo list at the start of a task.",
       "Use write_todos with mode 'append' to add new items to the end of the existing list.",
@@ -71,28 +91,17 @@ export function createWriteTodosTool(): ToolDefinition<typeof WriteTodosParams, 
       // Defense-in-depth text length check
       const oversizedIdx = findOversizedItem(params.todos, MAX_TODO_TEXT_LENGTH);
       if (oversizedIdx !== -1) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: todo item at index ${oversizedIdx} exceeds maximum text length (${MAX_TODO_TEXT_LENGTH} characters)`,
-            },
-          ],
-          details: {
-            action: "write" as const,
-            todos: [],
-            error: "text too long",
-          },
-        };
+        return makeErrorResult(
+          "write",
+          `Error: todo item at index ${oversizedIdx} exceeds maximum text length (${MAX_TODO_TEXT_LENGTH} characters)`,
+          "text too long",
+        );
       }
 
       const currentTodos = getTodos();
 
       if (params.mode === "replace") {
-        const newTodos = params.todos.map((t) => ({
-          text: t.text,
-          status: INITIAL_STATUS as TodoStatus,
-        }));
+        const newTodos = toNewItems(params.todos);
         setTodos(newTodos);
         updateUI(ctx, getTodos());
 
@@ -110,25 +119,14 @@ export function createWriteTodosTool(): ToolDefinition<typeof WriteTodosParams, 
       if (params.mode === "append") {
         // Check total count
         if (currentTodos.length + params.todos.length > MAX_TODOS) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error: appending ${params.todos.length} item(s) would exceed maximum of ${MAX_TODOS} todos (currently ${currentTodos.length})`,
-              },
-            ],
-            details: {
-              action: "write" as const,
-              todos: [],
-              error: "max todos exceeded",
-            },
-          };
+          return makeErrorResult(
+            "write",
+            `Error: appending ${params.todos.length} item(s) would exceed maximum of ${MAX_TODOS} todos (currently ${currentTodos.length})`,
+            "max todos exceeded",
+          );
         }
 
-        const newItems: TodoItem[] = params.todos.map((t) => ({
-          text: t.text,
-          status: INITIAL_STATUS as TodoStatus,
-        }));
+        const newItems: TodoItem[] = toNewItems(params.todos);
 
         appendTodos(newItems);
         updateUI(ctx, getTodos());
@@ -147,59 +145,32 @@ export function createWriteTodosTool(): ToolDefinition<typeof WriteTodosParams, 
       if (params.mode === "insert") {
         // Validate index parameter
         if (params.index === undefined || params.index === null) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "Error: 'index' is required for the 'insert' mode",
-              },
-            ],
-            details: {
-              action: "write" as const,
-              todos: [],
-              error: "index required for insert",
-            },
-          };
+          return makeErrorResult(
+            "write",
+            "Error: 'index' is required for the 'insert' mode",
+            "index required for insert",
+          );
         }
 
         // Validate index range (0 to length inclusive)
         if (params.index < 0 || params.index > currentTodos.length) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error: index ${params.index} out of range (0 to ${currentTodos.length})`,
-              },
-            ],
-            details: {
-              action: "write" as const,
-              todos: [],
-              error: `index ${params.index} out of range (0 to ${currentTodos.length})`,
-            },
-          };
+          return makeErrorResult(
+            "write",
+            `Error: index ${params.index} out of range (0 to ${currentTodos.length})`,
+            `index ${params.index} out of range (0 to ${currentTodos.length})`,
+          );
         }
 
         // Check total count
         if (currentTodos.length + params.todos.length > MAX_TODOS) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error: inserting ${params.todos.length} item(s) would exceed maximum of ${MAX_TODOS} todos (currently ${currentTodos.length})`,
-              },
-            ],
-            details: {
-              action: "write" as const,
-              todos: [],
-              error: "max todos exceeded",
-            },
-          };
+          return makeErrorResult(
+            "write",
+            `Error: inserting ${params.todos.length} item(s) would exceed maximum of ${MAX_TODOS} todos (currently ${currentTodos.length})`,
+            "max todos exceeded",
+          );
         }
 
-        const newItems: TodoItem[] = params.todos.map((t) => ({
-          text: t.text,
-          status: INITIAL_STATUS as TodoStatus,
-        }));
+        const newItems: TodoItem[] = toNewItems(params.todos);
 
         insertTodos(params.index, newItems);
         updateUI(ctx, getTodos());
@@ -216,10 +187,11 @@ export function createWriteTodosTool(): ToolDefinition<typeof WriteTodosParams, 
       }
 
       // Should be unreachable due to schema validation, but just in case
-      return {
-        content: [{ type: "text" as const, text: `Error: unknown mode '${params.mode}'` }],
-        details: { action: "write" as const, todos: [], error: `unknown mode '${params.mode}'` },
-      };
+      return makeErrorResult(
+        "write",
+        `Error: unknown mode '${params.mode}'`,
+        `unknown mode '${params.mode}'`,
+      );
     },
 
     renderCall(args, theme) {
@@ -275,46 +247,38 @@ export function createEditTodosTool(): ToolDefinition<typeof EditTodosParams, To
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       // Validate indices parameter
       if (!params.indices || params.indices.length === 0) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Error: 'indices' is required for start/complete/abandon actions",
-            },
-          ],
-          details: { action: "edit" as const, todos: [], error: "indices required" },
-        };
+        return makeErrorResult(
+          "edit",
+          "Error: 'indices' is required for start/complete/abandon actions",
+          "indices required",
+        );
       }
 
       const currentTodos = getTodos();
 
       if (currentTodos.length === 0) {
-        return {
-          content: [{ type: "text" as const, text: "Error: no todos exist" }],
-          details: { action: "edit" as const, todos: [], error: "no todos exist" },
-        };
+        return makeErrorResult("edit", "Error: no todos exist", "no todos exist");
       }
 
       // Validate all indices atomically
       const invalid = params.indices.filter((i) => i < 0 || i >= currentTodos.length);
       if (invalid.length > 0) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
-            },
-          ],
-          details: {
-            action: "edit" as const,
-            todos: [],
-            error: `indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
-          },
-        };
+        return makeErrorResult(
+          "edit",
+          `Error: indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
+          `indices [${invalid.join(", ")}] out of range (0 to ${currentTodos.length - 1})`,
+        );
       }
 
       // Apply action
       const newStatus = ACTION_TO_STATUS[params.action];
+      if (!newStatus) {
+        return makeErrorResult(
+          "edit",
+          `Error: unknown action '${params.action}'`,
+          `unknown action '${params.action}'`,
+        );
+      }
       updateTodoStatus(params.indices, newStatus);
       updateUI(ctx, getTodos());
 

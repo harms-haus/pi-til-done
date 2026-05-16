@@ -8,7 +8,7 @@
 | **Config file** | `vitest.config.ts` |
 | **Test file pattern** | `src/**/*.test.ts` |
 | **Setup file** | `src/__tests__/setup.ts` |
-| **Total tests** | 189 (across 6 test files, all passing) |
+| **Total tests** | 194 (across 6 test files, all passing) |
 
 ### Run Commands
 
@@ -26,9 +26,9 @@ npm run test:watch  # Watch mode
 | File | Module Tested | Tests |
 |---|---|---|
 | `src/__tests__/index.test.ts` | `index.ts` | 4 |
-| `src/__tests__/events.test.ts` | `events.ts` | 27 |
-| `src/__tests__/state.test.ts` | `state.ts` | 37 |
-| `src/__tests__/tools.test.ts` | `tools.ts` | 52 |
+| `src/__tests__/events.test.ts` | `events.ts` | 29 |
+| `src/__tests__/state.test.ts` | `state.ts` | 38 |
+| `src/__tests__/tools.test.ts` | `tools.ts` | 54 |
 | `src/__tests__/formatting.test.ts` | `formatting.ts` | 31 |
 | `src/__tests__/validation.test.ts` | `validation.ts` | 38 |
 
@@ -133,13 +133,14 @@ vi.advanceTimersByTime(3000);
 - Registers **4 event handlers** (`session_start`, `session_tree`, `before_agent_start`, `agent_end`)
 - Factory function does not throw when called
 
-### `events.test.ts` (27 tests)
+### `events.test.ts` (29 tests)
 
 #### `registerEventHandlers` (1 test)
 - Registers handlers for `session_start`, `session_tree`, `before_agent_start`, `agent_end`
 
-#### `registerMessageRenderers` (4 tests)
+#### `registerMessageRenderers` (5 tests)
 - `til-done-context` and `til-done-complete` renderers return themed text containing their message content
+- `til-done-countdown` renderer returns themed text
 
 #### `session_start` handler (1 test)
 - Reconstructs state from branch, updates UI status, clears auto-continue countdown
@@ -152,7 +153,7 @@ vi.advanceTimersByTime(3000);
 - Returns `undefined` when all todos are `completed`, all are `abandoned`, or the array is empty
 - Context message contains a formatted todo list with status icons and indices
 
-#### `agent_end` handler (14 tests)
+#### `agent_end` handler (15 tests)
 - Sends `sendUserMessage` auto-continue prompt when incomplete todos remain
 - **SEC-CRIT-01**: Prompt's instruction line does not contain `todo.text` — only action name and index
 - Returns early (no action) when todos are empty, all completed, or all abandoned
@@ -163,9 +164,10 @@ vi.advanceTimersByTime(3000);
 - Prompt contains "Remaining items:" list and "Next action:" structured instruction
 - Does not auto-continue when agent was aborted (`stopReason: "aborted"`)
 - Shows countdown widget (`til-done-countdown`) with 3s → 2s → 1s progression before auto-continue
+- Sends `sendUserMessage` via `setTimeout` when no UI available (no-UI fallback path)
 - Clears widget and handles gracefully when `sendUserMessage` throws (no unhandled exception)
 
-### `state.test.ts` (37 tests)
+### `state.test.ts` (38 tests)
 
 #### `getTodos` / `setTodos` (3 tests)
 - Returns empty array initially
@@ -176,9 +178,8 @@ vi.advanceTimersByTime(3000);
 - Updates status at specified indices, leaves others untouched
 - Resets `autoContinueCount` to 0
 
-#### `incrementAutoContinue` / `resetAutoContinue` (4 tests)
+#### `incrementAutoContinue` (3 tests)
 - Increments from 0 → 1, 1 → 2, and accumulates across calls
-- `resetAutoContinue` sets counter back to 0
 
 #### `appendTodos` (5 tests)
 - Appends a single item to an empty list
@@ -204,7 +205,7 @@ vi.advanceTimersByTime(3000);
 - Returns deep copies — mutations of result do not affect originals
 - Skips results with empty `todos` arrays (e.g. from `list_todos`)
 
-#### `updateUI` (7 tests)
+#### `updateUI` (9 tests)
 - Clears both status keys (`til-done`, `til-done-active`) when todos is empty
 - Shows progress counter `📋 X/Y` when some items are completed
 - Shows `✓ Done (N items)` when all completed, and clears active status
@@ -212,15 +213,18 @@ vi.advanceTimersByTime(3000);
 - Clears active items when none are in-progress
 - Does nothing when `ctx.hasUI` is `false`
 - Single-pass computation: completed count and active lines correct together
+- Shows progress counter `📋 X/Y` when all items are abandoned
+- Shows progress counter for mixed completed + abandoned items with no incomplete items
 
-### `tools.test.ts` (52 tests)
+### `tools.test.ts` (54 tests)
 
-#### `write_todos` — replace mode (6 tests)
+#### `write_todos` — replace mode (7 tests)
 - Creates items with `not_started` status
 - Returns content with formatted todo list and item count
 - Returns details with `action: "write"` and cloned todos (mutation isolation verified)
 - Rejects text exceeding `MAX_TODO_TEXT_LENGTH` with error in result
 - Reports correct index in error message for oversized items at position > 0
+- Allows replacing with empty array (clears all todos)
 - Calls `updateUI` via context
 
 #### `write_todos` — append mode (9 tests)
@@ -256,7 +260,7 @@ vi.advanceTimersByTime(3000);
 - **Atomicity**: no mutation when index is invalid
 - Calls `updateUI` via context
 
-#### `edit_todos` — status actions (11 tests)
+#### `edit_todos` — status actions (12 tests)
 - Applies `start` action to specified indices (transitions to `in_progress`)
 - Applies `complete` action to specified indices (transitions to `completed`)
 - Applies `abandon` action to specified indices (transitions to `abandoned`)
@@ -267,6 +271,7 @@ vi.advanceTimersByTime(3000);
 - **Atomicity**: no state mutation when any index is invalid
 - Returns content with action label (`"Started"`, `"Completed"`, `"Abandoned"`) and formatted list
 - Returns details with `action: "edit"` and cloned todos
+- Returns error when `indices` array is empty
 - Calls `updateUI` via context
 
 #### `renderCall` (5 tests)
@@ -364,8 +369,7 @@ expect(instructionLine).not.toContain("task 2");  // todo.text must not appear
 
 ## Coverage Notes
 
-- **No coverage tool configured**: `vitest.config.ts` does not include a `--coverage` flag or coverage configuration.
-- **Coverage gap**: The no-UI fallback branch in `agent_end` (setTimeout path) is exercised indirectly by tests that pass `{}` as context, making `ctx.hasUI` falsy. However, there is no dedicated test explicitly verifying setTimeout behavior and prompt delivery in no-UI mode.
+- **Coverage is configured** via `@vitest/coverage-v8` in `vitest.config.ts`. Thresholds are set to **80%** across branches, functions, lines, and statements. Run `npm run test:coverage` to generate a coverage report.
 
 ## Cross-References
 

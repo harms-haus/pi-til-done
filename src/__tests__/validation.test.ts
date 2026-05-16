@@ -145,20 +145,20 @@ describe("cloneTodos", () => {
     const original = [{ text: "task1", status: "not_started" as const }];
     const cloned = cloneTodos(original);
 
-    expect(cloned[0]).not.toBe(original[0]);
-    expect(cloned[0].text).toBe(original[0].text);
-    expect(cloned[0].status).toBe(original[0].status);
+    expect(cloned[0]!).not.toBe(original[0]!);
+    expect(cloned[0]!.text).toBe(original[0]!.text);
+    expect(cloned[0]!.status).toBe(original[0]!.status);
   });
 
   it("mutation of clone does not affect original", () => {
     const original = [{ text: "task1", status: "not_started" as const }];
     const cloned = cloneTodos(original);
 
-    cloned[0].text = "modified";
-    cloned[0].status = "completed";
+    cloned[0]!.text = "modified";
+    cloned[0]!.status = "completed";
 
-    expect(original[0].text).toBe("task1");
-    expect(original[0].status).toBe("not_started");
+    expect(original[0]!.text).toBe("task1");
+    expect(original[0]!.status).toBe("not_started");
   });
 
   it("returns empty array for empty input", () => {

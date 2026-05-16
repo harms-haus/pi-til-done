@@ -60,7 +60,7 @@ Run `npm run lint` and `npm run format:check` before submitting to verify compli
 
 - All new features must have corresponding tests.
 - Run `npm test` before submitting — all tests must pass.
-- There are **189 tests across 6 test files** in `src/__tests__/`.
+- There are **194 tests across 6 test files** in `src/__tests__/`.
 
 ### Test Helpers
 
@@ -76,6 +76,14 @@ Use the helpers from `src/__tests__/helpers/mocks.ts`:
 - Use `vi.useFakeTimers()` / `vi.useRealTimers()` for timer-dependent tests (e.g., `agent_end` countdown).
 
 See [docs/TESTING.md](docs/TESTING.md) for detailed test patterns and examples.
+
+### CI/CD
+
+GitHub Actions workflows are configured:
+- **CI** (`.github/workflows/ci.yml`): Runs on push/PR to main. Tests against Node.js 20 and 22 with type checking, linting, and coverage.
+- **Publish** (`.github/workflows/publish.yml`): Runs on version tags (`v*`). Validates with typecheck, lint, and test before dry-run publish.
+
+Run `npm run typecheck`, `npm run lint`, `npm test`, and `npm run test:coverage` locally before pushing.
 
 ## Pull Request Process
 

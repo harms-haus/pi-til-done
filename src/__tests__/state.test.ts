@@ -4,7 +4,6 @@ import {
   setTodos,
   updateTodoStatus,
   incrementAutoContinue,
-  resetAutoContinue,
   resetState,
   appendTodos,
   insertTodos,
@@ -51,9 +50,9 @@ describe("state management", () => {
       ];
       setTodos(todos);
       updateTodoStatus([0, 2], "completed");
-      expect(getTodos()[0].status).toBe("completed");
-      expect(getTodos()[1].status).toBe("not_started");
-      expect(getTodos()[2].status).toBe("completed");
+      expect(getTodos()[0]!.status).toBe("completed");
+      expect(getTodos()[1]!.status).toBe("not_started");
+      expect(getTodos()[2]!.status).toBe("completed");
     });
 
     it("does not affect other indices", () => {
@@ -64,9 +63,9 @@ describe("state management", () => {
       ];
       setTodos(todos);
       updateTodoStatus([1], "in_progress");
-      expect(getTodos()[0].status).toBe("not_started");
-      expect(getTodos()[1].status).toBe("in_progress");
-      expect(getTodos()[2].status).toBe("not_started");
+      expect(getTodos()[0]!.status).toBe("not_started");
+      expect(getTodos()[1]!.status).toBe("in_progress");
+      expect(getTodos()[2]!.status).toBe("not_started");
     });
 
     it("resets autoContinueCount to 0", () => {
@@ -95,17 +94,6 @@ describe("state management", () => {
       expect(incrementAutoContinue()).toBe(2);
       expect(incrementAutoContinue()).toBe(3);
       expect(incrementAutoContinue()).toBe(4);
-    });
-  });
-
-  describe("resetAutoContinue", () => {
-    it("resets counter to 0", () => {
-      incrementAutoContinue();
-      incrementAutoContinue();
-      incrementAutoContinue();
-      expect(incrementAutoContinue()).toBe(4);
-      resetAutoContinue();
-      expect(incrementAutoContinue()).toBe(1);
     });
   });
 
@@ -402,8 +390,8 @@ describe("reconstructState", () => {
       },
     ]);
     const result = reconstructState(ctx);
-    result[0].text = "modified";
-    expect(originalTodos[0].text).toBe("task");
+    result[0]!.text = "modified";
+    expect(originalTodos[0]!.text).toBe("task");
   });
 
   it("skips results with empty todos array (from list_todos or error paths)", () => {
@@ -518,5 +506,32 @@ describe("updateUI", () => {
     updateUI(ctx, todos);
     expect(setStatus).toHaveBeenCalledWith("til-done", "📋 2/5");
     expect(setStatus).toHaveBeenCalledWith("til-done-active", "[1] task 2\n[4] task 5");
+  });
+
+  it("shows progress counter when all items are abandoned", () => {
+    const setStatus = vi.fn();
+    const ctx = createMockContext();
+    ctx.ui.setStatus = setStatus;
+    const todos: TodoItem[] = [
+      { text: "task 1", status: "abandoned" },
+      { text: "task 2", status: "abandoned" },
+    ];
+    updateUI(ctx, todos);
+    expect(setStatus).toHaveBeenCalledWith("til-done", "📋 0/2");
+    expect(setStatus).toHaveBeenCalledWith("til-done-active", undefined);
+  });
+
+  it("shows progress counter for mixed completed+abandoned with no incomplete items", () => {
+    const setStatus = vi.fn();
+    const ctx = createMockContext();
+    ctx.ui.setStatus = setStatus;
+    const todos: TodoItem[] = [
+      { text: "task 1", status: "completed" },
+      { text: "task 2", status: "abandoned" },
+      { text: "task 3", status: "completed" },
+    ];
+    updateUI(ctx, todos);
+    expect(setStatus).toHaveBeenCalledWith("til-done", "📋 2/3");
+    expect(setStatus).toHaveBeenCalledWith("til-done-active", undefined);
   });
 });

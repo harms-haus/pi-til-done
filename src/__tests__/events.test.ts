@@ -48,6 +48,18 @@ describe("registerMessageRenderers", () => {
 
     expect(result.toString()).toContain("complete message");
   });
+
+  it("'til-done-countdown' renderer returns themed text", () => {
+    const { api, registerMessageRenderer } = createMockAPI();
+    registerMessageRenderers(api);
+    const rendererCalls = registerMessageRenderer.mock.calls;
+    const countdownCall = rendererCalls.find((call) => call[0] === "til-done-countdown");
+    const renderer = countdownCall![1];
+    const mockTheme = createMockTheme();
+    const message = { content: "Auto-continuing in 2s..." };
+    const result = renderer(message, { expanded: false, isPartial: false }, mockTheme);
+    expect(result.toString()).toContain("Auto-continuing in 2s...");
+  });
 });
 
 describe("registerEventHandlers", () => {
@@ -267,7 +279,7 @@ describe("agent_end handler", () => {
     vi.advanceTimersByTime(3000);
 
     expect(sendUserMessage).toHaveBeenCalled();
-    const prompt = sendUserMessage.mock.calls[0][0];
+    const prompt = sendUserMessage.mock.calls[0]![0]!;
     expect(prompt).toContain("edit_todos");
     expect(prompt).toContain("action 'start'");
     expect(prompt).toContain("[1]");
@@ -286,7 +298,7 @@ describe("agent_end handler", () => {
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
     vi.advanceTimersByTime(3000);
 
-    const prompt = sendUserMessage.mock.calls[0][0];
+    const prompt = sendUserMessage.mock.calls[0]![0]!;
     const lines = prompt.split("\n");
 
     // Find the instruction line
@@ -364,7 +376,9 @@ describe("agent_end handler", () => {
       (call: unknown[]) => (call[0] as { customType: string }).customType === "til-done-complete",
     );
     expect(completeCall).toBeDefined();
-    expect((completeCall![0] as { content: string }).content).toContain("Auto-continue limit reached");
+    expect((completeCall![0] as { content: string }).content).toContain(
+      "Auto-continue limit reached",
+    );
   });
 
   it("does not send sendUserMessage when limit reached", async () => {
@@ -444,7 +458,7 @@ describe("agent_end handler", () => {
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
     vi.advanceTimersByTime(3000);
 
-    const prompt = sendUserMessage.mock.calls[0][0];
+    const prompt = sendUserMessage.mock.calls[0]![0]!;
     expect(prompt).toContain("Remaining items:");
     expect(prompt).toContain("– [1] task 2");
     expect(prompt).toContain("● [2] task 3");
@@ -463,7 +477,7 @@ describe("agent_end handler", () => {
     await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, {});
     vi.advanceTimersByTime(3000);
 
-    const prompt = sendUserMessage.mock.calls[0][0];
+    const prompt = sendUserMessage.mock.calls[0]![0]!;
     expect(prompt).toContain("Next action: edit_todos with action 'complete' and indices [1]");
   });
 
@@ -489,9 +503,7 @@ describe("agent_end handler", () => {
   it("shows countdown widget before auto-continue", async () => {
     const { api, on, sendUserMessage } = createMockAPI();
     const ctx = createMockContext();
-    setTodos([
-      { text: "task 1", status: "not_started" },
-    ]);
+    setTodos([{ text: "task 1", status: "not_started" }]);
 
     registerEventHandlers(api);
 
@@ -525,6 +537,21 @@ describe("agent_end handler", () => {
     vi.advanceTimersByTime(1000);
     expect(ctx.ui.setWidget).toHaveBeenCalledWith("til-done-countdown", undefined);
     expect(sendUserMessage).toHaveBeenCalled();
+  });
+
+  it("sends sendUserMessage via setTimeout when no UI available", async () => {
+    const { api, on, sendUserMessage } = createMockAPI();
+    const ctx = createMockContext();
+    ctx.hasUI = false;
+    setTodos([{ text: "task 1", status: "not_started" }]);
+    registerEventHandlers(api);
+    const agentEndHandler = on.mock.calls.find((call) => call[0] === "agent_end")![1]! as any;
+    await agentEndHandler({ messages: [{ role: "assistant", stopReason: "stop" }] }, ctx);
+    vi.advanceTimersByTime(3000);
+    expect(sendUserMessage).toHaveBeenCalledTimes(1);
+    const prompt = sendUserMessage.mock.calls[0]![0] as string;
+    expect(prompt).toContain("edit_todos");
+    expect(prompt).toContain("action 'start'");
   });
 
   it("clears widget and handles gracefully when sendUserMessage throws during countdown", async () => {
